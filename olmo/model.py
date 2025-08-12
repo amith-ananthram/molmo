@@ -49,11 +49,18 @@ from .config import (
     ModelConfig,
     VisionBackboneType,
     ImagePooling2DType,
-    ImageProjectType, AttentionType, InitFnType,
+    ImageProjectType,
+    AttentionType,
+    InitFnType,
 )
 from .exceptions import OLMoConfigurationError
-from .image_vit import ViTMultiHeadDotProductAttention, ResidualAttentionBlock, VisionTransformer, \
-    SiglipVisionTransformer, DinoVisionTransformer
+from .image_vit import (
+    ViTMultiHeadDotProductAttention,
+    ResidualAttentionBlock,
+    VisionTransformer,
+    SiglipVisionTransformer,
+    DinoVisionTransformer,
+)
 from .initialization import ModuleType, init_weights, init_normal
 from .safetensors_util import safetensors_file_to_state_dict
 from .torch_util import ensure_finite_
@@ -88,8 +95,10 @@ log = logging.getLogger(__name__)
 
 def activation_checkpoint_function(cfg: ModelConfig):
     preserve_rng_state = not (
-        (cfg.attention_dropout == 0.0) and (cfg.embedding_dropout == 0.0) and
-        (cfg.residual_dropout == 0.0) and (cfg.response_residual_dropout == 0.0)
+        (cfg.attention_dropout == 0.0)
+        and (cfg.embedding_dropout == 0.0)
+        and (cfg.residual_dropout == 0.0)
+        and (cfg.response_residual_dropout == 0.0)
     )
     from torch.utils.checkpoint import checkpoint
 
@@ -100,16 +109,33 @@ def activation_checkpoint_function(cfg: ModelConfig):
     )
 
 
-def should_checkpoint_block(strategy: Optional[ActivationCheckpointingStrategy], block_idx: int) -> bool:
+def should_checkpoint_block(
+    strategy: Optional[ActivationCheckpointingStrategy], block_idx: int
+) -> bool:
     if strategy is None:
         return False
     elif (
         (strategy == ActivationCheckpointingStrategy.whole_layer)
-        or (strategy == ActivationCheckpointingStrategy.one_in_two and block_idx % 2 == 0)
-        or (strategy == ActivationCheckpointingStrategy.one_in_three and block_idx % 3 == 0)
-        or (strategy == ActivationCheckpointingStrategy.one_in_four and block_idx % 4 == 0)
-        or (strategy == ActivationCheckpointingStrategy.two_in_three and block_idx % 3 != 0)
-        or (strategy == ActivationCheckpointingStrategy.three_in_four and block_idx % 4 != 0)
+        or (
+            strategy == ActivationCheckpointingStrategy.one_in_two
+            and block_idx % 2 == 0
+        )
+        or (
+            strategy == ActivationCheckpointingStrategy.one_in_three
+            and block_idx % 3 == 0
+        )
+        or (
+            strategy == ActivationCheckpointingStrategy.one_in_four
+            and block_idx % 4 == 0
+        )
+        or (
+            strategy == ActivationCheckpointingStrategy.two_in_three
+            and block_idx % 3 != 0
+        )
+        or (
+            strategy == ActivationCheckpointingStrategy.three_in_four
+            and block_idx % 4 != 0
+        )
     ):
         return True
     else:
@@ -157,7 +183,7 @@ class Embedding(nn.Module):
     def reset_parameters(self):
         nn.init.normal_(self.embedding, std=self.initializer_range)
         nn.init.normal_(self.new_embedding, std=self.new_embed_initializer_range)
-    
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return F.embedding(x, torch.cat([self.embedding, self.new_embedding], dim=0))
 
@@ -174,7 +200,9 @@ class Dropout(nn.Dropout):
         self.mask_p = mask_p
         self.broadcast_dims = broadcast_dims
 
-    def forward(self, input: torch.Tensor, drop_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def forward(
+        self, input: torch.Tensor, drop_mask: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
         """
         :param input: A tensor of shape `(batch_size, seq_len, embed_dim)`
         :param drop_mask: A tensor of shape `(batch_size, seq_len)` with values of zero or one.
@@ -182,7 +210,7 @@ class Dropout(nn.Dropout):
         if self.p == 0.0 and (self.mask_p is None or self.mask_p == 0.0):
             return input
         else:
-            if self.mask_p > 0. and self.training:
+            if self.mask_p > 0.0 and self.training:
                 assert drop_mask is not None
                 drop_mask = drop_mask.to(input.dtype)
                 keep_prob = 1.0 - self.p
@@ -194,7 +222,7 @@ class Dropout(nn.Dropout):
                 multiplier = input.new_empty(dropout_shape).bernoulli_(keep_prob)
                 multiplier.div_(keep_prob)
                 return input * multiplier
-            elif self.p > 0. and len(self.broadcast_dims) > 0 and self.training:
+            elif self.p > 0.0 and len(self.broadcast_dims) > 0 and self.training:
                 keep_prob = 1.0 - self.p
                 dropout_shape = list(input.shape)
                 for dim in self.broadcast_dims:
@@ -222,13 +250,19 @@ class LayerNormBase(nn.Module):
         self.config = config
         self.eps = self.config.layer_norm_eps or eps
         self.normalized_shape = (size or config.d_model,)
-        if elementwise_affine or (elementwise_affine is None and self.config.layer_norm_with_affine):
-            self.weight = nn.Parameter(weight_initializer(self.normalized_shape, device=config.init_device))
+        if elementwise_affine or (
+            elementwise_affine is None and self.config.layer_norm_with_affine
+        ):
+            self.weight = nn.Parameter(
+                weight_initializer(self.normalized_shape, device=config.init_device)
+            )
             use_bias = self.config.bias_for_layer_norm
             if use_bias is None:
                 use_bias = self.config.include_bias
             if use_bias:
-                self.bias = nn.Parameter(bias_initializer(self.normalized_shape, device=config.init_device))
+                self.bias = nn.Parameter(
+                    bias_initializer(self.normalized_shape, device=config.init_device)
+                )
             else:
                 self.register_parameter("bias", None)
         else:
@@ -240,7 +274,9 @@ class LayerNormBase(nn.Module):
         raise NotImplementedError
 
     @classmethod
-    def build(cls, config: ModelConfig, size: Optional[int] = None, **kwargs) -> LayerNormBase:
+    def build(
+        cls, config: ModelConfig, size: Optional[int] = None, **kwargs
+    ) -> LayerNormBase:
         if config.layer_norm_type == LayerNormType.default:
             return LayerNorm(config, size=size, low_precision=False, **kwargs)
         elif config.layer_norm_type == LayerNormType.low_precision:
@@ -248,16 +284,24 @@ class LayerNormBase(nn.Module):
         elif config.layer_norm_type == LayerNormType.rms:
             return RMSLayerNorm(config, size=size, **kwargs)
         else:
-            raise NotImplementedError(f"Unknown LayerNorm type: '{config.layer_norm_type}'")
+            raise NotImplementedError(
+                f"Unknown LayerNorm type: '{config.layer_norm_type}'"
+            )
 
-    def _cast_if_autocast_enabled(self, tensor: torch.Tensor, dtype: Optional[torch.dtype] = None) -> torch.Tensor:
+    def _cast_if_autocast_enabled(
+        self, tensor: torch.Tensor, dtype: Optional[torch.dtype] = None
+    ) -> torch.Tensor:
         # NOTE: `is_autocast_enabled()` only checks for CUDA autocast, so we use the separate function
         # `is_autocast_cpu_enabled()` for CPU autocast.
         # See https://github.com/pytorch/pytorch/issues/110966.
         if tensor.device.type == "cuda" and torch.is_autocast_enabled():
-            return tensor.to(dtype=dtype if dtype is not None else torch.get_autocast_gpu_dtype())
+            return tensor.to(
+                dtype=dtype if dtype is not None else torch.get_autocast_gpu_dtype()
+            )
         elif tensor.device.type == "cpu" and torch.is_autocast_cpu_enabled():
-            return tensor.to(dtype=dtype if dtype is not None else torch.get_autocast_cpu_dtype())
+            return tensor.to(
+                dtype=dtype if dtype is not None else torch.get_autocast_cpu_dtype()
+            )
         else:
             return tensor
 
@@ -281,7 +325,9 @@ class LayerNorm(LayerNormBase):
         elementwise_affine: Optional[bool] = None,
         eps: float = 1e-05,
     ):
-        super().__init__(config, size=size, elementwise_affine=elementwise_affine, eps=eps)
+        super().__init__(
+            config, size=size, elementwise_affine=elementwise_affine, eps=eps
+        )
         self.low_precision = low_precision
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -289,15 +335,31 @@ class LayerNorm(LayerNormBase):
             module_device = x.device
             downcast_x = self._cast_if_autocast_enabled(x)
             downcast_weight = (
-                self._cast_if_autocast_enabled(self.weight) if self.weight is not None else self.weight
+                self._cast_if_autocast_enabled(self.weight)
+                if self.weight is not None
+                else self.weight
             )
-            downcast_bias = self._cast_if_autocast_enabled(self.bias) if self.bias is not None else self.bias
+            downcast_bias = (
+                self._cast_if_autocast_enabled(self.bias)
+                if self.bias is not None
+                else self.bias
+            )
             with torch.autocast(enabled=False, device_type=module_device.type):
                 return F.layer_norm(
-                    downcast_x, self.normalized_shape, weight=downcast_weight, bias=downcast_bias, eps=self.eps
+                    downcast_x,
+                    self.normalized_shape,
+                    weight=downcast_weight,
+                    bias=downcast_bias,
+                    eps=self.eps,
                 )
         else:
-            return F.layer_norm(x, self.normalized_shape, weight=self.weight, bias=self.bias, eps=self.eps)
+            return F.layer_norm(
+                x,
+                self.normalized_shape,
+                weight=self.weight,
+                bias=self.bias,
+                eps=self.eps,
+            )
 
 
 class RMSLayerNorm(LayerNormBase):
@@ -312,7 +374,9 @@ class RMSLayerNorm(LayerNormBase):
         elementwise_affine: Optional[bool] = None,
         eps: float = 1e-5,
     ):
-        super().__init__(config, size=size, elementwise_affine=elementwise_affine, eps=eps)
+        super().__init__(
+            config, size=size, elementwise_affine=elementwise_affine, eps=eps
+        )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         with torch.autocast(enabled=False, device_type=x.device.type):
@@ -343,10 +407,12 @@ class RotaryEmbedding(nn.Module):
         # Warm up cache.
         self.get_rotary_embedding(
             config.max_position_embeddings or config.max_sequence_length,
-            _non_meta_init_device(config)
+            _non_meta_init_device(config),
         )
 
-    def get_rotary_embedding(self, seq_len: int, device: torch.device) -> Tuple[torch.Tensor, torch.Tensor]:
+    def get_rotary_embedding(
+        self, seq_len: int, device: torch.device
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         if (
             (pos_sin := self.__cache.get("rope_pos_sin")) is not None
             and (pos_cos := self.__cache.get("rope_pos_cos")) is not None
@@ -362,12 +428,22 @@ class RotaryEmbedding(nn.Module):
             return pos_sin[:, :, :seq_len, :], pos_cos[:, :, :seq_len, :]
 
         with torch.autocast(device.type, enabled=False):
-            dim = self.config.head_dim if self.config.head_dim is not None else self.config.d_model // self.config.n_heads
-            inv_freq = 1.0 / (self.config.rope_theta ** (torch.arange(0, dim, 2, device=device, dtype=torch.float) / dim))
+            dim = (
+                self.config.head_dim
+                if self.config.head_dim is not None
+                else self.config.d_model // self.config.n_heads
+            )
+            inv_freq = 1.0 / (
+                self.config.rope_theta
+                ** (torch.arange(0, dim, 2, device=device, dtype=torch.float) / dim)
+            )
             seq = torch.arange(seq_len, device=device, dtype=torch.float)
             freqs = einsum("i , j -> i j", seq, inv_freq)
             positions = torch.cat((freqs, freqs), dim=-1)
-            pos_sin, pos_cos = positions.sin()[None, None, :, :], positions.cos()[None, None, :, :]
+            pos_sin, pos_cos = (
+                positions.sin()[None, None, :, :],
+                positions.cos()[None, None, :, :],
+            )
         self.__cache["rope_pos_sin"] = pos_sin
         self.__cache["rope_pos_cos"] = pos_cos
         return pos_sin, pos_cos
@@ -385,14 +461,16 @@ class RotaryEmbedding(nn.Module):
         x = torch.stack((-x2, x1), dim=-1)
         return x.view(B, nh, T, hs)
 
-    def apply_rotary_pos_emb(self, pos_sin: torch.Tensor, pos_cos: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
+    def apply_rotary_pos_emb(
+        self, pos_sin: torch.Tensor, pos_cos: torch.Tensor, t: torch.Tensor
+    ) -> torch.Tensor:
         return ((t * pos_cos) + (self.rotate_half(t) * pos_sin)).to(t.dtype)
 
     def forward(
         self,
         q: torch.Tensor,
         k: torch.Tensor,
-        position_ids: Optional[torch.Tensor] = None
+        position_ids: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         if self.config.rope_full_precision:
             q_, k_ = q.float(), k.float()
@@ -401,16 +479,24 @@ class RotaryEmbedding(nn.Module):
 
         with torch.autocast(q.device.type, enabled=False):
             batch_size = q_.shape[0]
-            query_len, key_len = q_.shape[-2], k_.shape[-2]  # could be different if layer_past not None
+            query_len, key_len = (
+                q_.shape[-2],
+                k_.shape[-2],
+            )  # could be different if layer_past not None
             if position_ids is not None:
-                freqs_cis_len = (self.config.max_position_embeddings or self.config.max_sequence_length)
+                freqs_cis_len = (
+                    self.config.max_position_embeddings
+                    or self.config.max_sequence_length
+                )
             else:
                 freqs_cis_len = key_len
             pos_sin, pos_cos = self.get_rotary_embedding(freqs_cis_len, q_.device)
             pos_sin = pos_sin.type_as(q_)
             pos_cos = pos_cos.type_as(q_)
             if position_ids is not None:
-                assert query_len == key_len, "Query and key lengths must be equal when using position IDs."
+                assert query_len == key_len, (
+                    "Query and key lengths must be equal when using position IDs."
+                )
                 pos_sin = pos_sin[0, 0][position_ids].view(
                     (batch_size, 1, key_len, pos_sin.shape[-1])
                 )
@@ -515,8 +601,12 @@ def causal_attention_bias(seq_len: int, device: torch.device) -> torch.FloatTens
     return att_bias.view(1, 1, seq_len, seq_len)  # type: ignore
 
 
-def get_causal_attention_bias(cache: BufferCache, seq_len: int, device: torch.device) -> torch.Tensor:
-    if (causal_bias := cache.get("causal_attention_bias")) is not None and causal_bias.shape[-1] >= seq_len:
+def get_causal_attention_bias(
+    cache: BufferCache, seq_len: int, device: torch.device
+) -> torch.Tensor:
+    if (
+        causal_bias := cache.get("causal_attention_bias")
+    ) is not None and causal_bias.shape[-1] >= seq_len:
         if causal_bias.device != device:
             causal_bias = causal_bias.to(device)
             cache["causal_attention_bias"] = causal_bias
@@ -537,7 +627,9 @@ class OLMoBlock(nn.Module):
         self.layer_id = layer_id
         self.config = config
         self.hidden_size = (
-            config.mlp_hidden_size if config.mlp_hidden_size is not None else config.mlp_ratio * config.d_model
+            config.mlp_hidden_size
+            if config.mlp_hidden_size is not None
+            else config.mlp_ratio * config.d_model
         )
         self.__cache = cache
         if config.head_dim is None:
@@ -546,7 +638,9 @@ class OLMoBlock(nn.Module):
         self._activation_checkpoint_fn = None
 
         # Dropout.
-        self.dropout = Dropout(config.residual_dropout, mask_p=config.response_residual_dropout)
+        self.dropout = Dropout(
+            config.residual_dropout, mask_p=config.response_residual_dropout
+        )
 
         # Layer norms.
         self.k_norm: Optional[LayerNormBase] = None
@@ -558,7 +652,9 @@ class OLMoBlock(nn.Module):
                 size=(config.d_model // config.n_heads) * config.effective_n_kv_heads,
                 elementwise_affine=config.attention_layer_norm_with_affine,
             )
-            self.q_norm = LayerNormBase.build(config, elementwise_affine=config.attention_layer_norm_with_affine)
+            self.q_norm = LayerNormBase.build(
+                config, elementwise_affine=config.attention_layer_norm_with_affine
+            )
 
         # Make sure QKV clip coefficient is positive, otherwise it's not well-defined.
         if config.clip_qkv is not None:
@@ -569,11 +665,16 @@ class OLMoBlock(nn.Module):
         assert (self.act.output_multiplier * self.hidden_size) % 1 == 0
 
         # Attention output projection.
-        input_dim = config.head_dim * config.n_heads if config.head_dim is not None else config.d_model
+        input_dim = (
+            config.head_dim * config.n_heads
+            if config.head_dim is not None
+            else config.d_model
+        )
         self.attn_out = nn.Linear(
-            input_dim, config.d_model,
+            input_dim,
+            config.d_model,
             bias=config.include_bias,
-            device=config.init_device
+            device=config.init_device,
         )
 
         if self.config.block_type != BlockType.moe:
@@ -619,14 +720,18 @@ class OLMoBlock(nn.Module):
             type_of_module=ModuleType.out_module,
         )
 
-    def set_activation_checkpointing(self, strategy: Optional[ActivationCheckpointingStrategy]):
+    def set_activation_checkpointing(
+        self, strategy: Optional[ActivationCheckpointingStrategy]
+    ):
         if strategy == ActivationCheckpointingStrategy.fine_grained:
             self._activation_checkpoint_fn = activation_checkpoint_function(self.config)
         else:
             self._activation_checkpoint_fn = None
 
     @classmethod
-    def _cast_attn_bias(cls, bias: torch.Tensor, input_dtype: torch.dtype) -> torch.Tensor:
+    def _cast_attn_bias(
+        cls, bias: torch.Tensor, input_dtype: torch.dtype
+    ) -> torch.Tensor:
         target_dtype = input_dtype
         # NOTE: `is_autocast_enabled()` only checks for CUDA autocast, so we use the separate function
         # `is_autocast_cpu_enabled()` for CPU autocast.
@@ -659,7 +764,11 @@ class OLMoBlock(nn.Module):
 
         if self.flash_attn_func is not None and attn_mask is None:
             r = self.flash_attn_func(
-                q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2), dropout_p=dropout_p, causal=is_causal
+                q.transpose(1, 2),
+                k.transpose(1, 2),
+                v.transpose(1, 2),
+                dropout_p=dropout_p,
+                causal=is_causal,
             )
             return r.transpose(1, 2)
         else:
@@ -669,8 +778,12 @@ class OLMoBlock(nn.Module):
             num_q_heads = q.size(1)
             if num_q_heads != num_kv_heads:
                 assert num_q_heads % num_kv_heads == 0
-                k = k.repeat_interleave(num_q_heads // num_kv_heads, dim=1, output_size=num_q_heads)
-                v = v.repeat_interleave(num_q_heads // num_kv_heads, dim=1, output_size=num_q_heads)
+                k = k.repeat_interleave(
+                    num_q_heads // num_kv_heads, dim=1, output_size=num_q_heads
+                )
+                v = v.repeat_interleave(
+                    num_q_heads // num_kv_heads, dim=1, output_size=num_q_heads
+                )
 
             return F.scaled_dot_product_attention(
                 q,
@@ -704,9 +817,13 @@ class OLMoBlock(nn.Module):
         # shape: (B, nh, T, hs)
         q = q.view(B, T, self.config.n_heads, C // self.config.n_heads).transpose(1, 2)
         # shape: (B, n_kv_h, T, hs)
-        k = k.view(B, T, self.config.effective_n_kv_heads, C // self.config.n_heads).transpose(1, 2)
+        k = k.view(
+            B, T, self.config.effective_n_kv_heads, C // self.config.n_heads
+        ).transpose(1, 2)
         # shape: (B, n_kv_h, T, hs)
-        v = v.view(B, T, self.config.effective_n_kv_heads, C // self.config.n_heads).transpose(1, 2)
+        v = v.view(
+            B, T, self.config.effective_n_kv_heads, C // self.config.n_heads
+        ).transpose(1, 2)
 
         if self.config.use_position_ids and self.config.rope:
             # Apply rotary embeddings
@@ -718,7 +835,10 @@ class OLMoBlock(nn.Module):
             v = torch.cat((past_value.to(v.device), v), dim=-2)
 
         present = (k, v) if use_cache else None
-        query_len, key_len = q.shape[-2], k.shape[-2]  # could be different if layer_past not None
+        query_len, key_len = (
+            q.shape[-2],
+            k.shape[-2],
+        )  # could be different if layer_past not None
 
         if not self.config.use_position_ids and self.config.rope:
             # Apply rotary embeddings
@@ -795,7 +915,9 @@ class OLMoEBlock(OLMoBlock):
         super().__init__(layer_id, config, cache)
 
         self.moe_args = config_to_moe_args(config)
-        self.ffn = dMoE(self.moe_args) if self.config.moe_dropless else MoE(self.moe_args)
+        self.ffn = (
+            dMoE(self.moe_args) if self.config.moe_dropless else MoE(self.moe_args)
+        )
 
         self.attn_norm = LayerNorm.build(config)
         self.ff_norm = LayerNorm.build(config)
@@ -808,7 +930,10 @@ class OLMoEBlock(OLMoBlock):
             config.effective_n_kv_heads * head_dim,
         )
         self.att_proj = nn.Linear(
-            config.d_model, sum(self.fused_dims), bias=config.include_bias, device=config.init_device
+            config.d_model,
+            sum(self.fused_dims),
+            bias=config.include_bias,
+            device=config.init_device,
         )
 
     def reset_parameters(self):
@@ -822,12 +947,18 @@ class OLMoEBlock(OLMoBlock):
             cutoff_factor = self.config.init_cutoff_factor
         elif self.config.init_fn == InitFnType.mitchell:
             in_std = 1 / math.sqrt(self.config.d_model)
-            attn_out_std = 1 / (math.sqrt(2 * self.config.d_model * (self.layer_id + 1)))
-            ff_out_std = 1 / (math.sqrt(2 * self.ff_out.in_features * (self.layer_id + 1)))
+            attn_out_std = 1 / (
+                math.sqrt(2 * self.config.d_model * (self.layer_id + 1))
+            )
+            ff_out_std = 1 / (
+                math.sqrt(2 * self.ff_out.in_features * (self.layer_id + 1))
+            )
             cutoff_factor = self.config.init_cutoff_factor or 3.0
         elif self.config.init_fn == InitFnType.full_megatron:
             in_std = self.config.init_std
-            attn_out_std = ff_out_std = self.config.init_std / math.sqrt(2.0 * self.config.n_layers)
+            attn_out_std = ff_out_std = self.config.init_std / math.sqrt(
+                2.0 * self.config.n_layers
+            )
             cutoff_factor = self.config.init_cutoff_factor or 3.0
         else:
             raise NotImplementedError(self.config.init_fn)
@@ -836,10 +967,16 @@ class OLMoEBlock(OLMoBlock):
         init_normal(self.attn_out, std=attn_out_std, init_cutoff_factor=cutoff_factor)
         self.attn_norm.reset_parameters()
         self.ff_norm.reset_parameters()
-        init_normal(self.ffn.experts.mlp.w1, std=in_std, init_cutoff_factor=cutoff_factor)
-        init_normal(self.ffn.experts.mlp.w2, std=ff_out_std, init_cutoff_factor=cutoff_factor)
+        init_normal(
+            self.ffn.experts.mlp.w1, std=in_std, init_cutoff_factor=cutoff_factor
+        )
+        init_normal(
+            self.ffn.experts.mlp.w2, std=ff_out_std, init_cutoff_factor=cutoff_factor
+        )
         if hasattr(self.ffn.experts.mlp, "v1"):
-            init_normal(self.ffn.experts.mlp.v1, std=in_std, init_cutoff_factor=cutoff_factor)
+            init_normal(
+                self.ffn.experts.mlp.v1, std=in_std, init_cutoff_factor=cutoff_factor
+            )
         if self.ffn.experts.bias is not None:
             torch.nn.init.zeros_(self.ffn.experts.bias)
         init_normal(self.ffn.router.layer, std=in_std, init_cutoff_factor=cutoff_factor)
@@ -954,13 +1091,17 @@ class OLMoSequentialBlock(OLMoBlock):
             config.effective_n_kv_heads * head_dim,
         )
         self.att_proj = nn.Linear(
-            config.d_model, sum(self.fused_dims),
+            config.d_model,
+            sum(self.fused_dims),
             bias=config.include_bias or config.qkv_bias,
-            device=config.init_device
+            device=config.init_device,
         )
         # Feed-forward input projection.
         self.ff_proj = nn.Linear(
-            config.d_model, self.hidden_size, bias=config.include_bias, device=config.init_device
+            config.d_model,
+            self.hidden_size,
+            bias=config.include_bias,
+            device=config.init_device,
         )
 
     def reset_parameters(self):
@@ -969,10 +1110,18 @@ class OLMoSequentialBlock(OLMoBlock):
         self.ff_norm.reset_parameters()
         # NOTE: the standard deviation for these weights does not depend on the layer.
         init_weights(
-            self.config, self.att_proj, d=self.config.d_model, layer_id=None, type_of_module=ModuleType.in_module
+            self.config,
+            self.att_proj,
+            d=self.config.d_model,
+            layer_id=None,
+            type_of_module=ModuleType.in_module,
         )
         init_weights(
-            self.config, self.ff_proj, d=self.config.d_model, layer_id=None, type_of_module=ModuleType.in_module
+            self.config,
+            self.ff_proj,
+            d=self.config.d_model,
+            layer_id=None,
+            type_of_module=ModuleType.in_module,
         )
 
     def forward(
@@ -1009,10 +1158,27 @@ class OLMoSequentialBlock(OLMoBlock):
         # Get attention scores.
         if self._activation_checkpoint_fn is not None:
             att, cache = self._activation_checkpoint_fn(  # type: ignore
-                self.attention, q, k, v, attention_bias, position_ids=position_ids, drop_mask=drop_mask, layer_past=layer_past, use_cache=use_cache
+                self.attention,
+                q,
+                k,
+                v,
+                attention_bias,
+                position_ids=position_ids,
+                drop_mask=drop_mask,
+                layer_past=layer_past,
+                use_cache=use_cache,
             )
         else:
-            att, cache = self.attention(q, k, v, attention_bias, position_ids=position_ids, drop_mask=drop_mask, layer_past=layer_past, use_cache=use_cache)
+            att, cache = self.attention(
+                q,
+                k,
+                v,
+                attention_bias,
+                position_ids=position_ids,
+                drop_mask=drop_mask,
+                layer_past=layer_past,
+                use_cache=use_cache,
+            )
 
         if self.config.norm_after:
             if self._activation_checkpoint_fn is not None:
@@ -1070,17 +1236,30 @@ class OLMoLlamaBlock(OLMoBlock):
 
         # Attention input projection. Projects x -> (q, k, v)
         q_proj_out_dim = config.d_model
-        k_proj_out_dim = config.effective_n_kv_heads * (config.d_model // config.n_heads)
-        v_proj_out_dim = config.effective_n_kv_heads * (config.d_model // config.n_heads)
+        k_proj_out_dim = config.effective_n_kv_heads * (
+            config.d_model // config.n_heads
+        )
+        v_proj_out_dim = config.effective_n_kv_heads * (
+            config.d_model // config.n_heads
+        )
 
         self.q_proj = nn.Linear(
-            config.d_model, q_proj_out_dim, bias=config.qkv_bias, device=config.init_device
+            config.d_model,
+            q_proj_out_dim,
+            bias=config.qkv_bias,
+            device=config.init_device,
         )
         self.k_proj = nn.Linear(
-            config.d_model, k_proj_out_dim, bias=config.qkv_bias, device=config.init_device
+            config.d_model,
+            k_proj_out_dim,
+            bias=config.qkv_bias,
+            device=config.init_device,
         )
         self.v_proj = nn.Linear(
-            config.d_model, v_proj_out_dim, bias=config.qkv_bias, device=config.init_device
+            config.d_model,
+            v_proj_out_dim,
+            bias=config.qkv_bias,
+            device=config.init_device,
         )
 
         # Feed-forward input projection.
@@ -1121,9 +1300,13 @@ class OLMoLlamaBlock(OLMoBlock):
         num_q_heads = q.size(1)
         if num_q_heads != num_kv_heads:
             assert num_q_heads % num_kv_heads == 0
-            k = k.repeat_interleave(num_q_heads // num_kv_heads, dim=1, output_size=num_q_heads)
-            v = v.repeat_interleave(num_q_heads // num_kv_heads, dim=1, output_size=num_q_heads)
-        
+            k = k.repeat_interleave(
+                num_q_heads // num_kv_heads, dim=1, output_size=num_q_heads
+            )
+            v = v.repeat_interleave(
+                num_q_heads // num_kv_heads, dim=1, output_size=num_q_heads
+            )
+
         og_dtype = q.dtype
         k = k.to(q.device)
         v = v.to(q.device)
@@ -1141,8 +1324,13 @@ class OLMoLlamaBlock(OLMoBlock):
             if is_causal:
                 assert attn_mask is None
 
-                query_len, key_len = q.shape[-2], k.shape[-2]  # could be different if layer_past not None
-                attn_bias = get_causal_attention_bias(self.__cache, key_len, q.device)[:, :, :query_len, :key_len]
+                query_len, key_len = (
+                    q.shape[-2],
+                    k.shape[-2],
+                )  # could be different if layer_past not None
+                attn_bias = get_causal_attention_bias(self.__cache, key_len, q.device)[
+                    :, :, :query_len, :key_len
+                ]
             elif attn_mask is not None:
                 attn_bias = attn_mask
             else:
@@ -1150,8 +1338,12 @@ class OLMoLlamaBlock(OLMoBlock):
 
             attn_weights += attn_bias
 
-            attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(q.dtype)
-            attn_weights = nn.functional.dropout(attn_weights, p=dropout_p, training=self.training).to(v.dtype)
+            attn_weights = nn.functional.softmax(
+                attn_weights, dim=-1, dtype=torch.float32
+            ).to(q.dtype)
+            attn_weights = nn.functional.dropout(
+                attn_weights, p=dropout_p, training=self.training
+            ).to(v.dtype)
 
             att = torch.matmul(attn_weights, v)
         elif self.config.attention_type == AttentionType.sdpa:
@@ -1195,10 +1387,27 @@ class OLMoLlamaBlock(OLMoBlock):
         # Get attention scores.
         if self._activation_checkpoint_fn is not None:
             att, cache = self._activation_checkpoint_fn(  # type: ignore
-                self.attention, q, k, v, attention_bias, position_ids=position_ids, drop_mask=drop_mask, layer_past=layer_past, use_cache=use_cache
+                self.attention,
+                q,
+                k,
+                v,
+                attention_bias,
+                position_ids=position_ids,
+                drop_mask=drop_mask,
+                layer_past=layer_past,
+                use_cache=use_cache,
             )
         else:
-            att, cache = self.attention(q, k, v, attention_bias, position_ids=position_ids, drop_mask=drop_mask, layer_past=layer_past, use_cache=use_cache)
+            att, cache = self.attention(
+                q,
+                k,
+                v,
+                attention_bias,
+                position_ids=position_ids,
+                drop_mask=drop_mask,
+                layer_past=layer_past,
+                use_cache=use_cache,
+            )
 
         # Add attention scores.
         # shape: (B, T, C)
@@ -1256,11 +1465,18 @@ class OLMoGenerateOutput(NamedTuple):
 
 
 class OLMoBlockGroup(nn.ModuleList):
-    def __init__(self, config: ModelConfig, layer_offset: int, modules: Optional[Iterable[nn.Module]] = None):
+    def __init__(
+        self,
+        config: ModelConfig,
+        layer_offset: int,
+        modules: Optional[Iterable[nn.Module]] = None,
+    ):
         super().__init__(modules)
         self.config = config
         self.layer_offset = layer_offset
-        self.activation_checkpointing_strategy: Optional[ActivationCheckpointingStrategy] = None
+        self.activation_checkpointing_strategy: Optional[
+            ActivationCheckpointingStrategy
+        ] = None
         self._activation_checkpoint_fn = activation_checkpoint_function(self.config)
 
     def forward(
@@ -1272,18 +1488,35 @@ class OLMoBlockGroup(nn.ModuleList):
         layers_past: Optional[List[Tuple[torch.Tensor, torch.Tensor]]] = None,
         use_cache: bool = False,
     ) -> Tuple[torch.Tensor, Optional[List[Tuple[torch.Tensor, torch.Tensor]]]]:
-        attn_key_values: Optional[List[Tuple[torch.Tensor, torch.Tensor]]] = [] if use_cache else None
+        attn_key_values: Optional[List[Tuple[torch.Tensor, torch.Tensor]]] = (
+            [] if use_cache else None
+        )
         for block_idx, block in enumerate(self):
             layer_past = None if layers_past is None else layers_past[block_idx]
             block_idx += self.layer_offset
-            if should_checkpoint_block(self.activation_checkpointing_strategy, block_idx):
+            if should_checkpoint_block(
+                self.activation_checkpointing_strategy, block_idx
+            ):
                 # shape: (batch_size, seq_len, d_model)
                 x, cache = self._activation_checkpoint_fn(  # type: ignore
-                    block, x, attention_bias=attention_bias, position_ids=position_ids, drop_mask=drop_mask, layer_past=layer_past, use_cache=use_cache
+                    block,
+                    x,
+                    attention_bias=attention_bias,
+                    position_ids=position_ids,
+                    drop_mask=drop_mask,
+                    layer_past=layer_past,
+                    use_cache=use_cache,
                 )
             else:
                 # shape: (batch_size, seq_len, d_model)
-                x, cache = block(x, attention_bias=attention_bias, position_ids=position_ids, drop_mask=drop_mask, layer_past=layer_past, use_cache=use_cache)
+                x, cache = block(
+                    x,
+                    attention_bias=attention_bias,
+                    position_ids=position_ids,
+                    drop_mask=drop_mask,
+                    layer_past=layer_past,
+                    use_cache=use_cache,
+                )
             if attn_key_values is not None:
                 assert cache is not None
                 attn_key_values.append(cache)
@@ -1293,7 +1526,9 @@ class OLMoBlockGroup(nn.ModuleList):
         for block in self:
             block.reset_parameters()
 
-    def set_activation_checkpointing(self, strategy: Optional[ActivationCheckpointingStrategy]):
+    def set_activation_checkpointing(
+        self, strategy: Optional[ActivationCheckpointingStrategy]
+    ):
         self.activation_checkpointing_strategy = strategy
         for block in self:
             block.set_activation_checkpointing(strategy)
@@ -1306,7 +1541,9 @@ class ImageProjectorMLP(nn.Module):
         super().__init__()
         self.config = config
         self.hidden_size = (
-            config.mlp_hidden_size if config.mlp_hidden_size is not None else config.mlp_ratio * config.d_model
+            config.mlp_hidden_size
+            if config.mlp_hidden_size is not None
+            else config.mlp_ratio * config.d_model
         )
         self.initializer_range = config.initializer_range
 
@@ -1331,12 +1568,12 @@ class ImageProjectorMLP(nn.Module):
         # Activation function.
         self.act = Activation.build(config)
         self.dropout = Dropout(dropout)
-    
+
     def reset_parameters(self):
         nn.init.normal_(self.w1.weight, std=self.initializer_range)
         nn.init.normal_(self.w2.weight, std=self.initializer_range)
         nn.init.normal_(self.w3.weight, std=self.initializer_range)
-    
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.w2(self.act(self.w1(x), self.w3(x)))
         x = self.dropout(x)
@@ -1347,10 +1584,10 @@ class Residual(nn.Module):
     def __init__(self, submodule: nn.Module):
         super().__init__()
         self.submodule = submodule
-    
+
     def reset_parameters(self):
         self.submodule.reset_parameters()
-    
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return x + self.submodule(x)
 
@@ -1362,24 +1599,36 @@ class MolmoVisionBackbone(nn.Module):
 
         input_dim: int = None
         self.image_pooling_2d: nn.Module = None
-        if config.image_pooling_2d in {ImagePooling2DType.attention, ImagePooling2DType.attention_meanq}:
-            self.image_pooling_2d = ViTMultiHeadDotProductAttention(config, is_vit_layer=False)
+        if config.image_pooling_2d in {
+            ImagePooling2DType.attention,
+            ImagePooling2DType.attention_meanq,
+        }:
+            self.image_pooling_2d = ViTMultiHeadDotProductAttention(
+                config, is_vit_layer=False
+            )
             input_dim = config.vision_backbone.image_emb_dim
         elif config.image_pooling_2d == ImagePooling2DType.attention_2wide:
             cfg = deepcopy(config)
             cfg.vision_backbone.image_emb_dim *= 2
             cfg.vision_backbone.image_head_dim *= 2
-            self.image_pooling_2d = ViTMultiHeadDotProductAttention(cfg, is_vit_layer=False)
+            self.image_pooling_2d = ViTMultiHeadDotProductAttention(
+                cfg, is_vit_layer=False
+            )
             input_dim = cfg.vision_backbone.image_emb_dim
-        elif config.image_pooling_2d in [ImagePooling2DType.none, ImagePooling2DType.stack]:
+        elif config.image_pooling_2d in [
+            ImagePooling2DType.none,
+            ImagePooling2DType.stack,
+        ]:
             self.image_pooling_2d = None
             nlayers = 1 if config.vit_layers is None else len(config.vit_layers)
             input_dim = nlayers * config.vision_backbone.image_emb_dim
             if config.image_pooling_2d == ImagePooling2DType.stack:
                 input_dim *= 4
         else:
-            raise NotImplementedError(f"Unknown image pooling 2D method: {config.image_pooling_2d}")
-        
+            raise NotImplementedError(
+                f"Unknown image pooling 2D method: {config.image_pooling_2d}"
+            )
+
         self.input_dim = input_dim
 
         # `MLP` assume the activation takes two inputs, so it must be a 'llama' version
@@ -1389,7 +1638,10 @@ class MolmoVisionBackbone(nn.Module):
             mlp_config = config
         if config.image_projector == ImageProjectType.mlpx2:
             self.image_projector = nn.ModuleList(
-                [ImageProjectorMLP(mlp_config, input_dim), Residual(ImageProjectorMLP(config, input_dim))]
+                [
+                    ImageProjectorMLP(mlp_config, input_dim),
+                    Residual(ImageProjectorMLP(config, input_dim)),
+                ]
             )
         elif config.image_projector == ImageProjectType.mlp:
             self.image_projector = ImageProjectorMLP(mlp_config, input_dim)
@@ -1401,7 +1653,9 @@ class MolmoVisionBackbone(nn.Module):
                 device=config.init_device,
             )
         else:
-            raise NotImplementedError(f"Unknown image projector: {config.image_projector}")
+            raise NotImplementedError(
+                f"Unknown image projector: {config.image_projector}"
+            )
 
         self.image_feature_dropout = Dropout(config.image_feature_dropout)
         self.grad_checkpointing = False
@@ -1414,29 +1668,35 @@ class MolmoVisionBackbone(nn.Module):
         elif v_cfg.image_model_type == VisionBackboneType.dino:
             self.image_vit = DinoVisionTransformer(config)
         else:
-            raise NotImplementedError(f"Unknown image model type: {v_cfg.image_model_type}")
+            raise NotImplementedError(
+                f"Unknown image model type: {v_cfg.image_model_type}"
+            )
 
         self.num_prefix_tokens = self.image_vit.num_prefix_tokens
-        assert self.num_prefix_tokens in {0, 1}, "Only 0 or 1 prefix tokens are supported"
+        assert self.num_prefix_tokens in {0, 1}, (
+            "Only 0 or 1 prefix tokens are supported"
+        )
 
         self.pad_embed = None
         if config.image_padding_embed:
-            image_dim = v_cfg.image_emb_dim*len(self.config.vit_layers)
+            image_dim = v_cfg.image_emb_dim * len(self.config.vit_layers)
             if config.image_padding_embed in ["pad_embed", "regress"]:
                 self.pad_embed = nn.Parameter(
-                    torch.zeros((image_dim,), device=config.init_device))
+                    torch.zeros((image_dim,), device=config.init_device)
+                )
             elif config.image_padding_embed == "pad_and_partial_pad":
                 self.pad_embed = nn.Parameter(
-                    torch.zeros((2, image_dim), device=config.init_device))
+                    torch.zeros((2, image_dim), device=config.init_device)
+                )
             else:
                 raise ValueError(config.image_padding_embed)
 
     @classmethod
-    def build(cls, config: ModelConfig) -> 'MolmoVisionBackbone':
+    def build(cls, config: ModelConfig) -> "MolmoVisionBackbone":
         v_cfg = config.vision_backbone
         assert v_cfg is not None
         return MolmoVisionBackbone(config)
-    
+
     def reset_connector_parameters(self):
         if self.image_pooling_2d is not None:
             self.image_pooling_2d.reset_parameters()
@@ -1457,20 +1717,28 @@ class MolmoVisionBackbone(nn.Module):
         if self.config.vit_load_path:
             vit_load_path = Path(self.config.vit_load_path)
             state_dict_path = resource_path(
-                vit_load_path.parent, vit_load_path.name,
+                vit_load_path.parent,
+                vit_load_path.name,
                 local_cache=vit_load_path.parent,
             )
-            assert state_dict_path.is_file(), f"Model file {str(state_dict_path)} not found"
+            assert state_dict_path.is_file(), (
+                f"Model file {str(state_dict_path)} not found"
+            )
             state_dict = torch.load(state_dict_path, map_location="cpu")
             self.image_vit.load_state_dict(state_dict)
         else:
             self.image_vit.reset_parameters()
 
-    def set_activation_checkpointing(self, strategy: Optional[ActivationCheckpointingStrategy]):
+    def set_activation_checkpointing(
+        self, strategy: Optional[ActivationCheckpointingStrategy]
+    ):
         self.grad_checkpointing = True
-        if strategy in (ActivationCheckpointingStrategy.whole_layer, ActivationCheckpointingStrategy.vit_only):
+        if strategy in (
+            ActivationCheckpointingStrategy.whole_layer,
+            ActivationCheckpointingStrategy.vit_only,
+        ):
             self.image_vit.set_grad_checkpointing()
-    
+
     def encode_image(self, images: torch.Tensor) -> torch.Tensor:
         """
         : param images: (batch_size, num_crops, num_patch, n_pixels)
@@ -1498,15 +1766,17 @@ class MolmoVisionBackbone(nn.Module):
         if self.num_prefix_tokens > 0:
             cls_embed = image_features[:, 0]
             image_features = image_features[:, 1:]
-        
+
         image_features = image_features * mask
         image_features = image_features.view(B, T, N, -1)
 
         cls_embed = cls_embed.view(B, T, -1) if cls_embed is not None else None
 
         return image_features
-    
-    def forward(self, images: torch.Tensor, image_masks: torch.Tensor) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+
+    def forward(
+        self, images: torch.Tensor, image_masks: torch.Tensor
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         cfg = self.config
 
         # image_features: (batch_size, num_crops(=num_image), num_patch, nximage_emb_dim)
@@ -1518,17 +1788,27 @@ class MolmoVisionBackbone(nn.Module):
             if cfg.image_padding_embed == "pad_embed":
                 all_pad = (image_masks == 0).to(dtype=torch.float32)
                 pad_embed = self.pad_embed[None, None, None, :]
-                image_features = image_features + pad_embed * torch.unsqueeze(all_pad, -1)
+                image_features = image_features + pad_embed * torch.unsqueeze(
+                    all_pad, -1
+                )
             elif cfg.image_padding_embed == "regress":
                 pad_embed = self.pad_embed[None, None, None, :]
-                image_features = image_features + pad_embed * torch.unsqueeze(torch.maximum(image_masks, torch.zeros_like(image_masks)), -1)
+                image_features = image_features + pad_embed * torch.unsqueeze(
+                    torch.maximum(image_masks, torch.zeros_like(image_masks)), -1
+                )
             elif cfg.image_padding_embed == "pad_and_partial_pad":
                 pad_embed = self.pad_embed[:, None, None, None, :]
                 all_pad = image_masks == 0
-                partial_pad = torch.logical_and(image_masks < 1, torch.logical_not(all_pad)).to(dtype=torch.float32)
+                partial_pad = torch.logical_and(
+                    image_masks < 1, torch.logical_not(all_pad)
+                ).to(dtype=torch.float32)
                 all_pad = all_pad.to(dtype=torch.float32)
-                image_features = image_features + pad_embed[0] * torch.unsqueeze(all_pad, -1)
-                image_features = image_features + pad_embed[1] * torch.unsqueeze(partial_pad, -1)
+                image_features = image_features + pad_embed[0] * torch.unsqueeze(
+                    all_pad, -1
+                )
+                image_features = image_features + pad_embed[1] * torch.unsqueeze(
+                    partial_pad, -1
+                )
             else:
                 raise ValueError(cfg.image_padding_embed)
 
@@ -1538,7 +1818,10 @@ class MolmoVisionBackbone(nn.Module):
             (batch_size, num_image) + cfg.image_num_patch + (-1,),
         )
 
-        if cfg.image_num_patch[0] % cfg.image_pooling_h != 0 or cfg.image_num_patch[1] % cfg.image_pooling_w != 0:
+        if (
+            cfg.image_num_patch[0] % cfg.image_pooling_h != 0
+            or cfg.image_num_patch[1] % cfg.image_pooling_w != 0
+        ):
             pad_h = cfg.image_num_patch[0] % cfg.image_pooling_h
             pad_w = cfg.image_num_patch[1] % cfg.image_pooling_w
             # Pad so we can still pool mxn patches
@@ -1550,7 +1833,7 @@ class MolmoVisionBackbone(nn.Module):
         # image pooling
         image_features = einops.rearrange(
             image_features,
-            'b n (h dh) (w dw) c -> (b n h w) (dh dw) c',
+            "b n (h dh) (w dw) c -> (b n h w) (dh dw) c",
             dh=cfg.image_pooling_h,
             dw=cfg.image_pooling_w,
         )
@@ -1558,12 +1841,23 @@ class MolmoVisionBackbone(nn.Module):
         if cfg.image_pooling_2d == ImagePooling2DType.attention_meanq:
             query = image_features.mean(-2, keepdim=True)
             image_features = self.image_pooling_2d(query, image_features)
-        elif cfg.image_pooling_2d not in {ImagePooling2DType.none, ImagePooling2DType.stack}:
+        elif cfg.image_pooling_2d not in {
+            ImagePooling2DType.none,
+            ImagePooling2DType.stack,
+        }:
             if self.grad_checkpointing:
                 from torch.utils.checkpoint import checkpoint
-                image_features = checkpoint(self.image_pooling_2d, image_features[:, :1, :], image_features, use_reentrant=False)
+
+                image_features = checkpoint(
+                    self.image_pooling_2d,
+                    image_features[:, :1, :],
+                    image_features,
+                    use_reentrant=False,
+                )
             else:
-                image_features = self.image_pooling_2d(image_features[:, :1, :], image_features)
+                image_features = self.image_pooling_2d(
+                    image_features[:, :1, :], image_features
+                )
 
         h, w = cfg.llm_patches_per_crop()
         image_features = image_features.reshape(batch_size, num_image, h * w, -1)
@@ -1575,10 +1869,13 @@ class MolmoVisionBackbone(nn.Module):
         else:
             if self.grad_checkpointing:
                 from torch.utils.checkpoint import checkpoint
-                image_features = checkpoint(self.image_projector, image_features, use_reentrant=False)
+
+                image_features = checkpoint(
+                    self.image_projector, image_features, use_reentrant=False
+                )
             else:
                 image_features = self.image_projector(image_features)
-        
+
         # image_features: (batch_size, num_image, num_patch, d_model)
         # cls_embed: (batch_size, num_image, d_model)
         return image_features
@@ -1591,27 +1888,41 @@ class Molmo(nn.Module):
         self.__cache = BufferCache()
 
         # Validate config.
-        if self.config.embedding_size is not None and self.config.embedding_size != self.config.vocab_size:
+        if (
+            self.config.embedding_size is not None
+            and self.config.embedding_size != self.config.vocab_size
+        ):
             if self.config.embedding_size < self.config.vocab_size:
-                raise OLMoConfigurationError("embedding size should be at least as big as vocab size")
+                raise OLMoConfigurationError(
+                    "embedding size should be at least as big as vocab size"
+                )
             elif self.config.embedding_size % 128 != 0:
                 import warnings
 
                 warnings.warn(
-                    "Embedding size is not a multiple of 128! This could hurt throughput performance.", UserWarning
+                    "Embedding size is not a multiple of 128! This could hurt throughput performance.",
+                    UserWarning,
                 )
 
-        self.activation_checkpointing_strategy: Optional[ActivationCheckpointingStrategy] = None
-        self._activation_checkpoint_fn: Callable = activation_checkpoint_function(self.config)
+        self.activation_checkpointing_strategy: Optional[
+            ActivationCheckpointingStrategy
+        ] = None
+        self._activation_checkpoint_fn: Callable = activation_checkpoint_function(
+            self.config
+        )
 
         if not (
             0 < self.config.block_group_size <= self.config.n_layers
             and self.config.n_layers % self.config.block_group_size == 0
         ):
-            raise OLMoConfigurationError("n layers must be divisible by block group size")
+            raise OLMoConfigurationError(
+                "n layers must be divisible by block group size"
+            )
 
         torch.backends.cuda.enable_flash_sdp(True)
-        torch.backends.cuda.enable_mem_efficient_sdp(False)  # this is super slow so make sure torch won't use it
+        torch.backends.cuda.enable_mem_efficient_sdp(
+            False
+        )  # this is super slow so make sure torch won't use it
 
         wte = None
         if self.config.additional_vocab_size is not None:
@@ -1621,11 +1932,13 @@ class Molmo(nn.Module):
                 config.d_model,
                 device=config.init_device,
                 initializer_range=config.initializer_range,
-                new_embed_initializer_range=config.new_embedding_init_range
+                new_embed_initializer_range=config.new_embedding_init_range,
             )
         else:
-            wte=nn.Embedding(
-                config.embedding_size or config.vocab_size, config.d_model, device=config.init_device
+            wte = nn.Embedding(
+                config.embedding_size or config.vocab_size,
+                config.d_model,
+                device=config.init_device,
             )
 
         self.transformer = nn.ModuleDict(
@@ -1636,7 +1949,9 @@ class Molmo(nn.Module):
             )
         )
 
-        blocks = [OLMoBlock.build(i, config, self.__cache) for i in range(config.n_layers)]
+        blocks = [
+            OLMoBlock.build(i, config, self.__cache) for i in range(config.n_layers)
+        ]
         if self.config.block_group_size > 1:
             block_groups = [
                 OLMoBlockGroup(config, i, blocks[i : i + config.block_group_size])
@@ -1648,7 +1963,13 @@ class Molmo(nn.Module):
 
         if not self.config.rope:
             self.transformer.update(
-                {"wpe": nn.Embedding(config.max_sequence_length, config.d_model, device=config.init_device)}
+                {
+                    "wpe": nn.Embedding(
+                        config.max_sequence_length,
+                        config.d_model,
+                        device=config.init_device,
+                    )
+                }
             )
         if not config.weight_tying:
             self.transformer.update(
@@ -1661,7 +1982,7 @@ class Molmo(nn.Module):
                     )
                 }
             )
-        
+
         self.vision_backbone: Optional[MolmoVisionBackbone] = None
         if config.vision_backbone is not None:
             self.vision_backbone = MolmoVisionBackbone.build(config)
@@ -1673,30 +1994,43 @@ class Molmo(nn.Module):
             self.reset_non_vision_parameters()
         else:
             state_dict_path = resource_path(
-                Path(self.config.llm_load_path).parent, Path(self.config.llm_load_path).name,
+                Path(self.config.llm_load_path).parent,
+                Path(self.config.llm_load_path).name,
                 local_cache=Path(self.config.llm_load_path).parent,
             )
-            assert state_dict_path.is_file(), f"Model file {str(state_dict_path)} not found"
+            assert state_dict_path.is_file(), (
+                f"Model file {str(state_dict_path)} not found"
+            )
             if state_dict_path.name.endswith("safetensors"):
-                state_dict = safetensors_file_to_state_dict(state_dict_path, map_location="cpu")
+                state_dict = safetensors_file_to_state_dict(
+                    state_dict_path, map_location="cpu"
+                )
             else:
                 state_dict = torch.load(state_dict_path, map_location="cpu")
             if all(x.startswith("transformer.") for x in state_dict.keys()):
-                state_dict = {k[len("transformer."):]: v for k, v in state_dict.items()}
+                state_dict = {
+                    k[len("transformer.") :]: v for k, v in state_dict.items()
+                }
             if "wte.weight" in state_dict and self.config.additional_vocab_size:
                 state_dict["wte.embedding"] = state_dict.pop("wte.weight")
             transformer_keys = set(x[0] for x in self.transformer.named_parameters())
-            assert transformer_keys - set(state_dict.keys()) <= {"wte.new_embedding"}, \
+            assert transformer_keys - set(state_dict.keys()) <= {"wte.new_embedding"}, (
                 "Unexpected keys in the model file"
+            )
             self.transformer.load_state_dict(state_dict, strict=False)
             if hasattr(self.transformer.wte, "new_embedding"):
                 # This is the only parameter not initialized from the LLM weights
-                nn.init.normal_(self.transformer.wte.new_embedding, std=self.config.new_embedding_init_range)
+                nn.init.normal_(
+                    self.transformer.wte.new_embedding,
+                    std=self.config.new_embedding_init_range,
+                )
 
         if self.vision_backbone is not None:
             self.vision_backbone.reset_with_pretrained_weights()
 
-    def set_activation_checkpointing(self, strategy: Optional[ActivationCheckpointingStrategy]):
+    def set_activation_checkpointing(
+        self, strategy: Optional[ActivationCheckpointingStrategy]
+    ):
         self.activation_checkpointing_strategy = strategy
         if self.config.block_group_size != 1:
             for block_group in self.transformer.block_groups:
@@ -1707,7 +2041,7 @@ class Molmo(nn.Module):
 
         if self.vision_backbone is not None:
             self.vision_backbone.set_activation_checkpointing(strategy)
-    
+
     @staticmethod
     def get_connector_parameters():
         return tuple(
@@ -1732,9 +2066,13 @@ class Molmo(nn.Module):
     def get_llm_parameters():
         return tuple(
             [
-                "transformer.wte.embedding", "transformer.wte.weight", "transformer.wpe",
-                "transformer.blocks", "transformer.block_groups",
-                "transformer.ln_f", "transformer.ff_out",
+                "transformer.wte.embedding",
+                "transformer.wte.weight",
+                "transformer.wpe",
+                "transformer.blocks",
+                "transformer.block_groups",
+                "transformer.ln_f",
+                "transformer.ff_out",
             ]
         )
 
@@ -1742,14 +2080,21 @@ class Molmo(nn.Module):
     def get_weight_decay_exclusions():
         return tuple(
             [
-                "wte", "attn_norm", "ff_norm",
-                "pre_attn_norm", "post_attn_norm",
-                "pre_ff_norm", "post_ff_norm",
+                "wte",
+                "attn_norm",
+                "ff_norm",
+                "pre_attn_norm",
+                "post_attn_norm",
+                "pre_ff_norm",
+                "post_ff_norm",
                 "ln_f",
                 "pre_ln",
-                "attention_norm", "ffn_norm",
-                "lambda1", "lambda2",
-                "positional_embedding", "class_embedding",
+                "attention_norm",
+                "ffn_norm",
+                "lambda1",
+                "lambda2",
+                "positional_embedding",
+                "class_embedding",
             ]
         )
 
@@ -1771,23 +2116,34 @@ class Molmo(nn.Module):
         if self.config.additional_vocab_size is not None:
             self.transformer.wte.reset_parameters()
             if hasattr(self.transformer.wte, "new_embedding"):
-                nn.init.normal_(self.transformer.wte.new_embedding, std=self.config.new_embedding_init_range)
+                nn.init.normal_(
+                    self.transformer.wte.new_embedding,
+                    std=self.config.new_embedding_init_range,
+                )
         else:
             init_weights(
                 self.config,
                 self.transformer.wte,  # type: ignore
-                std_factor=(0.5 * math.sqrt(self.config.d_model)) if self.config.scale_logits else 1.0,
+                std_factor=(0.5 * math.sqrt(self.config.d_model))
+                if self.config.scale_logits
+                else 1.0,
                 type_of_module=ModuleType.emb,
             )
         if hasattr(self.transformer, "wpe"):
-            init_weights(self.config, self.transformer.wpe, type_of_module=ModuleType.emb)  # type: ignore
+            init_weights(
+                self.config, self.transformer.wpe, type_of_module=ModuleType.emb
+            )  # type: ignore
 
         # Top-level layer norm.
         self.transformer.ln_f.reset_parameters()  # type: ignore
 
         # Output weights.
         if hasattr(self.transformer, "ff_out"):
-            init_weights(self.config, self.transformer.ff_out, type_of_module=ModuleType.final_out)  # type: ignore
+            init_weights(
+                self.config,
+                self.transformer.ff_out,
+                type_of_module=ModuleType.final_out,
+            )  # type: ignore
 
         # Let the blocks handle themselves.
         if self.config.block_group_size == 1:
@@ -1796,7 +2152,6 @@ class Molmo(nn.Module):
         else:
             for block_group in self.transformer.block_groups:
                 block_group.reset_parameters()
-
 
     def forward(
         self,
@@ -1815,6 +2170,7 @@ class Molmo(nn.Module):
         last_logits_only: bool = False,
         output_hidden_states: Optional[bool] = None,
         append_last_valid_logits: Optional[torch.Tensor] = None,
+        **kwargs,  # this is a hack to play nicely with PEFT
     ) -> OLMoOutput:
         """
         :param input_ids: A tensor of shape `(batch_size, seq_len)`.
@@ -1850,17 +2206,27 @@ class Molmo(nn.Module):
         :param last_logits_only: If `True`, only compute the logits for the last token of each sequence.
             This can speed up decoding when you only care about the next token.
         """
-        output_hidden_states = output_hidden_states if output_hidden_states is not None else False
+        output_hidden_states = (
+            output_hidden_states if output_hidden_states is not None else False
+        )
 
         if past_key_values:
             assert len(past_key_values) == self.config.n_layers
 
         has_image = images is not None
 
-        assert not (has_image and input_embeddings is not None), "Cannot provide both images and input embeddings."
-        assert not (has_image and past_key_values is not None), "Cached key and values should not be used with images."
+        assert not (has_image and input_embeddings is not None), (
+            "Cannot provide both images and input embeddings."
+        )
+        assert not (has_image and past_key_values is not None), (
+            "Cached key and values should not be used with images."
+        )
 
-        batch_size, seq_len = input_ids.size() if input_embeddings is None else input_embeddings.size()[:2]
+        batch_size, seq_len = (
+            input_ids.size()
+            if input_embeddings is None
+            else input_embeddings.size()[:2]
+        )
         if past_key_values is None:
             past_length = 0
         else:
@@ -1868,16 +2234,19 @@ class Molmo(nn.Module):
 
         if self.config.use_position_ids and attention_mask is None:
             attention_mask = input_ids != -1
-        
+
         if subsegment_ids is not None:
             assert not use_cache, "Subsegment_ids cannot be used with cache."
             subsegment_mask = subsegment_ids.unsqueeze(2) <= subsegment_ids.unsqueeze(1)
             attention_mask = (
-                subsegment_mask.to(attention_mask.dtype) *
-                attention_mask.unsqueeze(2) *
-                attention_mask.unsqueeze(1))
+                subsegment_mask.to(attention_mask.dtype)
+                * attention_mask.unsqueeze(2)
+                * attention_mask.unsqueeze(1)
+            )
             if position_ids is None:
-                raise ValueError(f"Positioned ids must be given if using subsegment_ids")
+                raise ValueError(
+                    f"Positioned ids must be given if using subsegment_ids"
+                )
         else:
             if self.config.use_position_ids and position_ids is None:
                 position_ids = torch.clamp(
@@ -1889,7 +2258,11 @@ class Molmo(nn.Module):
         # shape: (batch_size, seq_len, d_model)
         if input_ids is not None:
             input_ids = input_ids * (input_ids != -1).to(input_ids.dtype)
-        x = self.transformer.wte(input_ids) if input_embeddings is None else input_embeddings  # type: ignore
+        x = (
+            self.transformer.wte(input_ids)
+            if input_embeddings is None
+            else input_embeddings
+        )  # type: ignore
 
         num_image: Optional[int] = None
         if images is not None:
@@ -1915,7 +2288,9 @@ class Molmo(nn.Module):
         if not self.config.rope:
             # Get positional embeddings.
             # shape: (1, seq_len)
-            pos = torch.arange(past_length, past_length + seq_len, dtype=torch.long, device=x.device).unsqueeze(0)
+            pos = torch.arange(
+                past_length, past_length + seq_len, dtype=torch.long, device=x.device
+            ).unsqueeze(0)
             # shape: (1, seq_len, d_model)
             pos_emb = self.transformer.wpe(pos)  # type: ignore
             x = pos_emb + x
@@ -1926,17 +2301,21 @@ class Molmo(nn.Module):
 
         # normalized
         if self.config.normalize_input_embeds:
-            x = x * (self.config.d_model ** 0.5)
+            x = x * (self.config.d_model**0.5)
 
         # Transform the attention mask into what the blocks expect.
         if attention_mask is not None:
             # shape: (batch_size, 1, 1, seq_len)
             if len(attention_mask.shape) == 2:
-                attention_mask = attention_mask[:, :past_length + seq_len]
-                attention_mask = attention_mask.to(dtype=torch.float).view(batch_size, -1)[:, None, None, :]
+                attention_mask = attention_mask[:, : past_length + seq_len]
+                attention_mask = attention_mask.to(dtype=torch.float).view(
+                    batch_size, -1
+                )[:, None, None, :]
             else:
                 attention_mask = attention_mask.unsqueeze(1).to(dtype=torch.float)
-            attention_mask = (1.0 - attention_mask) * torch.finfo(attention_mask.dtype).min
+            attention_mask = (1.0 - attention_mask) * torch.finfo(
+                attention_mask.dtype
+            ).min
 
         # Merge attention mask with attention bias.
         if (
@@ -1948,10 +2327,14 @@ class Molmo(nn.Module):
             or past_key_values is not None
         ):
             if attention_bias is None:
-                attention_bias = get_causal_attention_bias(self.__cache, past_length + seq_len, x.device)
+                attention_bias = get_causal_attention_bias(
+                    self.__cache, past_length + seq_len, x.device
+                )
             elif attention_bias.dtype in (torch.int8, torch.bool):
                 attention_bias = attention_bias.to(dtype=torch.float)
-                attention_bias.masked_fill_(attention_bias == 0.0, torch.finfo(attention_bias.dtype).min)
+                attention_bias.masked_fill_(
+                    attention_bias == 0.0, torch.finfo(attention_bias.dtype).min
+                )
 
             # Transform to the right shape and data type.
             mask_len = seq_len
@@ -1959,7 +2342,9 @@ class Molmo(nn.Module):
                 mask_len = attention_mask.shape[-1]
             elif past_key_values is not None:
                 mask_len = past_key_values[0][0].shape[-2] + seq_len
-            attention_bias = attention_bias[:, :, :mask_len, :mask_len].to(dtype=torch.float)
+            attention_bias = attention_bias[:, :, :mask_len, :mask_len].to(
+                dtype=torch.float
+            )
 
             # Add in the masking bias.
             if attention_mask is not None:
@@ -1969,7 +2354,9 @@ class Molmo(nn.Module):
                 # it can produce NaNs.
                 ensure_finite_(attention_bias, check_neg_inf=True, check_pos_inf=False)
 
-        attn_key_values: Optional[List[Tuple[torch.Tensor, torch.Tensor]]] = [] if use_cache else None
+        attn_key_values: Optional[List[Tuple[torch.Tensor, torch.Tensor]]] = (
+            [] if use_cache else None
+        )
 
         # decoder layers
         all_hidden_states = []
@@ -1981,15 +2368,32 @@ class Molmo(nn.Module):
                     # add hidden states
                     all_hidden_states.append(x)
 
-                layer_past = None if past_key_values is None else past_key_values[block_idx]
-                if should_checkpoint_block(self.activation_checkpointing_strategy, block_idx):
+                layer_past = (
+                    None if past_key_values is None else past_key_values[block_idx]
+                )
+                if should_checkpoint_block(
+                    self.activation_checkpointing_strategy, block_idx
+                ):
                     # shape: (batch_size, seq_len, d_model)
                     x, cache = self._activation_checkpoint_fn(
-                        block, x, attention_bias=attention_bias, position_ids=position_ids, drop_mask=response_mask, layer_past=layer_past, use_cache=use_cache
+                        block,
+                        x,
+                        attention_bias=attention_bias,
+                        position_ids=position_ids,
+                        drop_mask=response_mask,
+                        layer_past=layer_past,
+                        use_cache=use_cache,
                     )
                 else:
                     # shape: (batch_size, seq_len, d_model)
-                    x, cache = block(x, attention_bias=attention_bias, position_ids=position_ids, drop_mask=response_mask, layer_past=layer_past, use_cache=use_cache)
+                    x, cache = block(
+                        x,
+                        attention_bias=attention_bias,
+                        position_ids=position_ids,
+                        drop_mask=response_mask,
+                        layer_past=layer_past,
+                        use_cache=use_cache,
+                    )
 
                 if attn_key_values is not None:
                     assert cache is not None
@@ -2004,21 +2408,29 @@ class Molmo(nn.Module):
                     None
                     if past_key_values is None
                     else past_key_values[
-                        group_idx * self.config.block_group_size : (group_idx + 1) * self.config.block_group_size
+                        group_idx * self.config.block_group_size : (group_idx + 1)
+                        * self.config.block_group_size
                     ]
                 )
                 x, cache = block_group(
-                    x, attention_bias=attention_bias, position_ids=position_ids, drop_mask=response_mask, layers_past=layers_past, use_cache=use_cache
+                    x,
+                    attention_bias=attention_bias,
+                    position_ids=position_ids,
+                    drop_mask=response_mask,
+                    layers_past=layers_past,
+                    use_cache=use_cache,
                 )
                 if attn_key_values is not None:
                     assert cache is not None
                     attn_key_values.extend(cache)
-        
+
         if last_logits_only:
             # shape: (batch_size, 1, d_model)
             if append_last_valid_logits is not None:
                 last_valid_output = x[
-                    torch.arange(x.shape[0], device=x.device), append_last_valid_logits.to(x.device)]
+                    torch.arange(x.shape[0], device=x.device),
+                    append_last_valid_logits.to(x.device),
+                ]
                 x = last_valid_output.unsqueeze(1)
             else:
                 x = x[:, -1, :].unsqueeze(1)
@@ -2041,10 +2453,16 @@ class Molmo(nn.Module):
 
         if not last_logits_only and append_last_valid_logits is not None:
             last_valid_logit = logits[
-                torch.arange(logits.shape[0], device=logits.device), append_last_valid_logits]
+                torch.arange(logits.shape[0], device=logits.device),
+                append_last_valid_logits,
+            ]
             logits = torch.cat([logits[:, :-1], last_valid_logit[:, None]], dim=1)
 
-        return OLMoOutput(logits=logits, attn_key_values=attn_key_values, hidden_states=tuple(all_hidden_states) if output_hidden_states else None)  # type: ignore[arg-type]
+        return OLMoOutput(
+            logits=logits,
+            attn_key_values=attn_key_values,
+            hidden_states=tuple(all_hidden_states) if output_hidden_states else None,
+        )  # type: ignore[arg-type]
 
     def get_fsdp_wrap_policy(self, wrap_strategy: Optional[FSDPWrapStrategy] = None):
         if wrap_strategy is None:
@@ -2065,7 +2483,11 @@ class Molmo(nn.Module):
             size_based_module_to_wrap.add(self.vision_backbone.image_pooling_2d)
             size_based_module_to_wrap.add(self.vision_backbone.image_projector)
 
-        wrap_layer_names = (ResidualAttentionBlock, MolmoVisionBackbone, VisionTransformer)
+        wrap_layer_names = (
+            ResidualAttentionBlock,
+            MolmoVisionBackbone,
+            VisionTransformer,
+        )
 
         if wrap_strategy == FSDPWrapStrategy.by_block:
 
@@ -2082,7 +2504,10 @@ class Molmo(nn.Module):
 
             def fsdp_wrap_fn(module, recurse: bool = True, nonwrapped_numel: int = 0):
                 del nonwrapped_numel
-                wrap = isinstance(module, wrap_layer_names + (OLMoBlock,)) or module in size_based_module_to_wrap
+                wrap = (
+                    isinstance(module, wrap_layer_names + (OLMoBlock,))
+                    or module in size_based_module_to_wrap
+                )
                 if recurse:
                     return True
                 else:
@@ -2112,7 +2537,10 @@ class Molmo(nn.Module):
 
             def fsdp_wrap_fn(module, recurse: bool = True, nonwrapped_numel: int = 0):
                 del nonwrapped_numel
-                wrap = isinstance(module, wrap_layer_names + (OLMoBlockGroup,)) or module in size_based_module_to_wrap
+                wrap = (
+                    isinstance(module, wrap_layer_names + (OLMoBlockGroup,))
+                    or module in size_based_module_to_wrap
+                )
                 if recurse:
                     return True
                 else:
@@ -2148,7 +2576,9 @@ class Molmo(nn.Module):
         else:
             raise NotImplementedError(wrap_strategy)
 
-    def num_params(self, include_embedding: bool = True, include_inactive_params: bool = True) -> int:
+    def num_params(
+        self, include_embedding: bool = True, include_inactive_params: bool = True
+    ) -> int:
         """
         Get the total number of parameters.
         """
@@ -2166,7 +2596,9 @@ class Molmo(nn.Module):
             idx = self.config.moe_top_k
             if self.config.moe_dropless:
                 idx *= self.transformer.blocks[1].moe_args.ffn_hidden_size
-            params = [(np[0], np[1][:idx]) if "experts.mlp" in np[0] else np for np in params]  # type: ignore
+            params = [
+                (np[0], np[1][:idx]) if "experts.mlp" in np[0] else np for np in params
+            ]  # type: ignore
         return sum(p.numel() for _, p in params)
 
     @property
@@ -2181,10 +2613,17 @@ class Molmo(nn.Module):
         params_flops_per_seq = params_flops_per_token * self.config.max_sequence_length
         # there are 2 FLOPS per mac; there is A=Q*K^T and out=A*V ops (ie mult by 2)
         attn_flops_per_seq = (
-            self.config.n_layers * 2 * 2 * (self.config.d_model * (self.config.max_sequence_length**2))
+            self.config.n_layers
+            * 2
+            * 2
+            * (self.config.d_model * (self.config.max_sequence_length**2))
         )
         self.__num_fwd_flops = params_flops_per_seq + attn_flops_per_seq
         return self.__num_fwd_flops
+
+    # this is a hack to play nicely with PEFT
+    def prepare_inputs_for_generation(self, *args, **kwargs):
+        return kwargs
 
     def generate(
         self,
@@ -2201,7 +2640,7 @@ class Molmo(nn.Module):
         min_steps: Optional[int] = None,
         final_sequence_scorer: Optional[FinalSequenceScorer] = None,
         constraints: Optional[List[Constraint]] = None,
-        is_distributed: bool=False
+        is_distributed: bool = False,
     ) -> OLMoGenerateOutput:
         """
         Generate token IDs using beam search.
@@ -2226,7 +2665,7 @@ class Molmo(nn.Module):
             min_steps=min_steps,
             final_sequence_scorer=final_sequence_scorer,
             constraints=constraints,
-            distributed_model=is_distributed
+            distributed_model=is_distributed,
         )
 
         # Validate inputs.
@@ -2237,8 +2676,7 @@ class Molmo(nn.Module):
         if self.config.use_position_ids and attention_mask is None:
             attention_mask = input_ids != -1
             position_ids = torch.clamp(
-                torch.cumsum(attention_mask.to(torch.int32), dim=-1) - 1,
-                min=0
+                torch.cumsum(attention_mask.to(torch.int32), dim=-1) - 1, min=0
             )
             append_last_valid_logits = attention_mask.long().sum(dim=-1) - 1
             attention_mask = torch.cat(
@@ -2295,7 +2733,10 @@ class Molmo(nn.Module):
                 input_ids = last_predictions.unsqueeze(1)
                 if not self.config.use_position_ids and attention_mask is not None:
                     group_size = input_ids.shape[0]
-                    attention_mask = torch.cat((attention_mask, attention_mask.new_ones((group_size, 1))), dim=-1)
+                    attention_mask = torch.cat(
+                        (attention_mask, attention_mask.new_ones((group_size, 1))),
+                        dim=-1,
+                    )
                 _images = None
                 _image_input_idx = None
                 if self.config.use_position_ids:
@@ -2308,7 +2749,7 @@ class Molmo(nn.Module):
                     )
                 else:
                     _position_ids = None
-                
+
                 _append_last_valid_logits = None
 
             else:
@@ -2346,7 +2787,9 @@ class Molmo(nn.Module):
 
             return log_probs, state
 
-        initial_preds = input_ids.new_zeros((batch_size,))  # This is arbitrary, we won't use this.
+        initial_preds = input_ids.new_zeros(
+            (batch_size,)
+        )  # This is arbitrary, we won't use this.
         state: dict[str, torch.Tensor] = {"input_ids": input_ids}
         if attention_mask is not None:
             state["attention_mask"] = attention_mask
@@ -2362,15 +2805,19 @@ class Molmo(nn.Module):
 
     @classmethod
     def from_checkpoint(
-        cls, checkpoint_dir: PathOrStr, device: str = "cpu",
-        checkpoint_type: Optional[CheckpointType] = None
+        cls,
+        checkpoint_dir: PathOrStr,
+        device: str = "cpu",
+        checkpoint_type: Optional[CheckpointType] = None,
     ) -> Molmo:
         """
         Load an OLMo model from a checkpoint.
         """
         from .util import resource_path
+
         if checkpoint_dir.startswith("hf:"):
             from .hf_molmo import load_hf_model
+
             return load_hf_model(checkpoint_dir[3:])
 
         # Guess checkpoint type.
@@ -2388,7 +2835,9 @@ class Molmo(nn.Module):
             model_config = ModelConfig.load(Path(join(checkpoint_dir, "model.yaml")))
         else:
             config_path = resource_path(checkpoint_dir, "config.yaml")
-            model_config = ModelConfig.load(config_path, key="model", validate_paths=False)
+            model_config = ModelConfig.load(
+                config_path, key="model", validate_paths=False
+            )
 
         if checkpoint_type == CheckpointType.unsharded:
             # Initialize model (always on CPU to start with so we don't run out of GPU memory).
@@ -2435,7 +2884,9 @@ class Molmo(nn.Module):
         # not wrapped in FSDP. And when the model is wrapped in FSDP, loading this state dict will still work
         # fine without the prefixes. This also simplifies the other steps below.
         for key in list(state_dict.keys()):
-            state_dict[(new_key := key.replace("_fsdp_wrapped_module.", ""))] = state_dict.pop(key)
+            state_dict[(new_key := key.replace("_fsdp_wrapped_module.", ""))] = (
+                state_dict.pop(key)
+            )
             new_keys_to_og_keys[new_key] = key
 
         # For backwards compatibility prior to fixing https://github.com/allenai/LLM/issues/222
@@ -2443,23 +2894,35 @@ class Molmo(nn.Module):
             for key in list(state_dict.keys()):
                 if fnmatch(key, "transformer.*.norm.weight"):
                     tensor = state_dict.pop(key)
-                    state_dict[(new_key := key.replace("norm.weight", "attn_norm.weight"))] = tensor
+                    state_dict[
+                        (new_key := key.replace("norm.weight", "attn_norm.weight"))
+                    ] = tensor
                     new_keys_to_og_keys[new_key] = new_keys_to_og_keys[key]
-                    state_dict[(new_key := key.replace("norm.weight", "ff_norm.weight"))] = tensor.clone()
+                    state_dict[
+                        (new_key := key.replace("norm.weight", "ff_norm.weight"))
+                    ] = tensor.clone()
                     new_keys_to_og_keys[new_key] = new_keys_to_og_keys[key]
                     del new_keys_to_og_keys[key]
                 elif fnmatch(key, "transformer.*.norm.bias"):
                     tensor = state_dict.pop(key)
-                    state_dict[(new_key := key.replace("norm.bias", "attn_norm.bias"))] = tensor
+                    state_dict[
+                        (new_key := key.replace("norm.bias", "attn_norm.bias"))
+                    ] = tensor
                     new_keys_to_og_keys[new_key] = new_keys_to_og_keys[key]
-                    state_dict[(new_key := key.replace("norm.bias", "ff_norm.bias"))] = tensor.clone()
+                    state_dict[
+                        (new_key := key.replace("norm.bias", "ff_norm.bias"))
+                    ] = tensor.clone()
                     new_keys_to_og_keys[new_key] = new_keys_to_og_keys[key]
                     del new_keys_to_og_keys[key]
 
         # For loading a state dict that was saved with a different `block_group_size`.
         if "transformer.block_groups.0.0.attn_out.weight" in state_dict.keys():
             state_dict_block_group_size = len(
-                [k for k in state_dict.keys() if fnmatch(k, "transformer.block_groups.0.*.attn_out.weight")]
+                [
+                    k
+                    for k in state_dict.keys()
+                    if fnmatch(k, "transformer.block_groups.0.*.attn_out.weight")
+                ]
             )
         else:
             state_dict_block_group_size = 1
@@ -2472,13 +2935,20 @@ class Molmo(nn.Module):
             # and then (re-)group them into the right block sizes.
             if state_dict_block_group_size > 1:
                 for key in list(state_dict.keys()):
-                    if (m := re.match(r"transformer.block_groups\.(\d+)\.(\d+)\..*", key)) is not None:
+                    if (
+                        m := re.match(
+                            r"transformer.block_groups\.(\d+)\.(\d+)\..*", key
+                        )
+                    ) is not None:
                         group_idx, group_block_idx = int(m.group(1)), int(m.group(2))
-                        block_idx = (group_idx * state_dict_block_group_size) + group_block_idx
+                        block_idx = (
+                            group_idx * state_dict_block_group_size
+                        ) + group_block_idx
                         state_dict[
                             (
                                 new_key := key.replace(
-                                    f"block_groups.{group_idx}.{group_block_idx}.", f"blocks.{block_idx}."
+                                    f"block_groups.{group_idx}.{group_block_idx}.",
+                                    f"blocks.{block_idx}.",
                                 )
                             )
                         ] = state_dict.pop(key)
@@ -2487,7 +2957,9 @@ class Molmo(nn.Module):
             if self.config.block_group_size > 1:
                 # Group the state dict blocks into the right block size.
                 for key in list(state_dict.keys()):
-                    if (m := re.match(r"transformer.blocks\.(\d+)\..*", key)) is not None:
+                    if (
+                        m := re.match(r"transformer.blocks\.(\d+)\..*", key)
+                    ) is not None:
                         block_idx = int(m.group(1))
                         group_idx, group_block_idx = (
                             block_idx // self.config.block_group_size,
@@ -2496,7 +2968,8 @@ class Molmo(nn.Module):
                         state_dict[
                             (
                                 new_key := key.replace(
-                                    f"blocks.{block_idx}.", f"block_groups.{group_idx}.{group_block_idx}."
+                                    f"blocks.{block_idx}.",
+                                    f"block_groups.{group_idx}.{group_block_idx}.",
                                 )
                             )
                         ] = state_dict.pop(key)

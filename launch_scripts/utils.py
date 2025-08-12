@@ -6,8 +6,14 @@ from typing import Dict
 import numpy as np
 
 from olmo import DataConfig, DatasetEvaluatorConfig
-from olmo.config import EvaluatorConfig, ModelConfig, VisionBackboneConfig, \
-    TokenizerConfig, LayerNormType, AttentionType
+from olmo.config import (
+    EvaluatorConfig,
+    ModelConfig,
+    VisionBackboneConfig,
+    TokenizerConfig,
+    LayerNormType,
+    AttentionType,
+)
 
 
 DEBUG_MODEL = ModelConfig(
@@ -49,9 +55,19 @@ def get_evaluator(name) -> EvaluatorConfig:
         return EvaluatorConfig(vqa_eval="ansl,em")
     elif name in ["gqa", "tally_qa"]:
         return EvaluatorConfig(vqa_eval="em")
-    elif name in ["science_qa", "a_okvqa_mc", "science_qa_img", "ai2_diagram", "ai2_diagram_v2", "ai2_diagram_v2_transparent"]:
+    elif name in [
+        "science_qa",
+        "a_okvqa_mc",
+        "science_qa_img",
+        "ai2_diagram",
+        "ai2_diagram_v2",
+        "ai2_diagram_v2_transparent",
+    ]:
         return EvaluatorConfig(vqa_eval="mc")
-    elif name in ["ai2_diagram_v2_mix_transparent", "ai2_diagram_v2_mix_transparent_one_style"]:
+    elif name in [
+        "ai2_diagram_v2_mix_transparent",
+        "ai2_diagram_v2_mix_transparent_one_style",
+    ]:
         return EvaluatorConfig(vqa_eval="mc_ai2d_opaque,mc_ai2d_transparent")
     elif name.startswith("mmmu"):
         return EvaluatorConfig(vqa_eval="mmmu_score")
@@ -74,7 +90,9 @@ def get_evaluator(name) -> EvaluatorConfig:
         raise NotImplementedError(name)
 
 
-def get_evaluation(name, seq_len, batch_size, max_examples, num_workers=2) -> DatasetEvaluatorConfig:
+def get_evaluation(
+    name, seq_len, batch_size, max_examples, num_workers=2
+) -> DatasetEvaluatorConfig:
     """Gets the default evaluation config for task (or task:split string) `name`"""
     if ":" in name:
         name, split = name.split(":")
@@ -89,8 +107,16 @@ def get_evaluation(name, seq_len, batch_size, max_examples, num_workers=2) -> Da
     evaluator = get_evaluator(name)
     evaluator.num_wandb_examples = 64
 
-    eval_only_tasks = ["mmmu", "mme", "math_vista", "real_world_qa", "seed_bench",
-                       "mmbench", "sugar_crepe", "blink"]
+    eval_only_tasks = [
+        "mmmu",
+        "mme",
+        "math_vista",
+        "real_world_qa",
+        "seed_bench",
+        "mmbench",
+        "sugar_crepe",
+        "blink",
+    ]
     eval_only_tasks += [task_name + "_test" for task_name in eval_only_tasks]
     if name == "tall_qa_count":
         task_name = "tally_qa"
@@ -101,8 +127,16 @@ def get_evaluation(name, seq_len, batch_size, max_examples, num_workers=2) -> Da
     evaluator.num_wandb_examples = 32
     evaluator.n_to_log = 0
     evaluator.save_predictions = None
-    test_eval_tasks = ["mme_test", "real_world_qa_test", "real_world_qa_test", "count_bench",
-                       "seed_bench_test", "sugar_crepe_test", "count_bench_from_caption", "pointing_test"]
+    test_eval_tasks = [
+        "mme_test",
+        "real_world_qa_test",
+        "real_world_qa_test",
+        "count_bench",
+        "seed_bench_test",
+        "sugar_crepe_test",
+        "count_bench_from_caption",
+        "pointing_test",
+    ]
     if split is None:
         split = "test" if task_name in test_eval_tasks else "validation"
 
@@ -110,7 +144,11 @@ def get_evaluation(name, seq_len, batch_size, max_examples, num_workers=2) -> Da
         max_new_tokens = 256
     elif name == "math_vista_demo":
         max_new_tokens = 384
-    elif name in ["chart_qa_scifi", "chart_qa_ex", "chart_qa_prompting_explanation"] or name.endswith("_demo"):
+    elif name in [
+        "chart_qa_scifi",
+        "chart_qa_ex",
+        "chart_qa_prompting_explanation",
+    ] or name.endswith("_demo"):
         max_new_tokens = 256
     elif name.startswith("user_questions_for_elo"):
         max_new_tokens = 768  # Can have counts of 20+ so make sure there is room
@@ -128,10 +166,15 @@ def get_evaluation(name, seq_len, batch_size, max_examples, num_workers=2) -> Da
         max_new_tokens = 12
 
     ds = DataConfig(
-        dataset=task_name, sequence_length=seq_len,
+        dataset=task_name,
+        sequence_length=seq_len,
         for_inference=True,
-        split=split, shuffle=True, drop_last=True,
-        num_workers=num_workers, pad="to_max", pin_memory=True
+        split=split,
+        shuffle=True,
+        drop_last=True,
+        num_workers=num_workers,
+        pad="to_max",
+        pin_memory=True,
     )
 
     return DatasetEvaluatorConfig(
@@ -139,7 +182,7 @@ def get_evaluation(name, seq_len, batch_size, max_examples, num_workers=2) -> Da
         max_new_tokens=max_new_tokens,
         mm_evaluator=evaluator,
         label="ai2_diagram" if "ai2_diagram" in name else name,
-        data=ds
+        data=ds,
     )
 
 
@@ -163,6 +206,25 @@ DEFAULT_VISION_BACKBONE = VisionBackboneConfig(
     initializer_range=0.02,
 )
 
+OPENCLIP_VISION_BACKBONE = VisionBackboneConfig(
+    image_model_type="openai",
+    image_default_input_size=(336, 336),
+    image_patch_size=14,
+    image_pos_patch_size=14,
+    image_emb_dim=1024,
+    image_num_heads=16,
+    image_num_key_value_heads=16,
+    image_num_layers=23,
+    image_head_dim=64,
+    image_mlp_dim=4096,
+    image_mlp_activations="quick_gelu",
+    image_dropout_rate=0.0,
+    image_num_pos=577,
+    image_norm_eps=1e-5,
+    attention_dropout=0.0,
+    residual_dropout=0.0,
+    initializer_range=0.02,
+)
 
 SIGLIP_VISION_BACKBONE = VisionBackboneConfig(
     image_model_type="siglip",
@@ -177,7 +239,7 @@ SIGLIP_VISION_BACKBONE = VisionBackboneConfig(
     image_mlp_dim=4304,
     image_mlp_activations="gelu_pytorch_tanh",
     image_dropout_rate=0.0,
-    image_num_pos=729, # no CLS token
+    image_num_pos=729,  # no CLS token
     image_norm_eps=1e-6,
     attention_dropout=0.0,
     residual_dropout=0.0,
@@ -235,18 +297,18 @@ OLMOE = ModelConfig(
     n_heads=16,
     n_layers=16,
     mlp_ratio=1,
-    activation_type='swiglu',
-    block_type='moe',
+    activation_type="swiglu",
+    block_type="moe",
     rope=True,
     rope_full_precision=True,
     rope_theta=10000.0,
     low_cpu_fsdp=True,
-    attention_type='sdpa',
+    attention_type="sdpa",
     attention_layer_norm=True,
     residual_dropout=0.1,
     response_residual_dropout=0.0,
     embedding_dropout=0.0,
-    layer_norm_type='rms',
+    layer_norm_type="rms",
     layer_norm_with_affine=True,
     layer_norm_eps=1e-05,
     attention_layer_norm_with_affine=True,
@@ -260,16 +322,15 @@ OLMOE = ModelConfig(
     additional_vocab_size=128,
     new_embedding_init_range=0.02,
     weight_tying=False,
-    init_device='meta',
-    precision='amp_bf16',
-    image_projector='mlp',
+    init_device="meta",
+    precision="amp_bf16",
+    image_projector="mlp",
     normalize_input_embeds=False,
     use_position_ids=True,
-
     # MOE parameters
     moe_num_experts=64,
     moe_top_k=8,
-    moe_mlp_impl='sparse',
+    moe_mlp_impl="sparse",
     moe_log_expert_assignment=False,
     moe_shared_expert=False,
     moe_lbl_in_fp32=False,
@@ -278,9 +339,8 @@ OLMOE = ModelConfig(
     moe_zloss_weight=0.0,
     moe_dropless=True,
     moe_capacity_factor=1.25,
-
     tokenizer=TokenizerConfig(
-        identifier='allenai/OLMoE-1B-7B-0924',
+        identifier="allenai/OLMoE-1B-7B-0924",
     ),
     image_pooling_2d="attention_meanq",
     image_padding_embed="pad_and_partial_pad",
@@ -330,6 +390,49 @@ OLMO_1024_PREVIEW = ModelConfig(
     image_padding_embed="pad_and_partial_pad",
 )
 
+OLMO2_13B = ModelConfig(
+    d_model=5120,
+    n_heads=40,
+    n_kv_heads=None,
+    clip_qkv=None,
+    n_layers=40,
+    mlp_ratio=4,
+    mlp_hidden_size=22016,
+    activation_type="swiglu",
+    block_type="sequential",
+    block_group_size=1,
+    rope=True,
+    rope_full_precision=True,
+    rope_theta=500000,
+    attention_dropout=0.0,
+    attention_layer_norm=True,
+    layer_norm_type="rms",
+    layer_norm_with_affine=True,
+    layer_norm_eps=1.0e-06,
+    attention_layer_norm_with_affine=True,
+    max_sequence_length=4096,
+    include_bias=False,
+    bias_for_layer_norm=False,
+    scale_logits=False,
+    vocab_size=100278,
+    embedding_size=100352,
+    additional_vocab_size=128,
+    weight_tying=False,
+    attention_type=AttentionType.sdpa,
+    init_device="meta",
+    init_fn="normal",
+    init_std=0.02,
+    init_cutoff_factor=3.0,
+    precision="amp_bf16",
+    norm_after=True,
+    tokenizer=TokenizerConfig(
+        identifier="allenai/OLMo-2-1124-13B-Instruct",
+    ),
+    embedding_dropout=0,
+    image_pooling_2d="attention_meanq",
+    image_padding_embed="pad_and_partial_pad",
+)
+
 
 QWEN2_7B = ModelConfig(
     vocab_size=152064,
@@ -344,7 +447,7 @@ QWEN2_7B = ModelConfig(
     include_bias=False,
     embedding_size=152064,
     d_model=3584,
-    mlp_hidden_size=18944*2,
+    mlp_hidden_size=18944 * 2,
     n_layers=28,
     additional_vocab_size=128,
     n_heads=28,
@@ -376,7 +479,7 @@ QWEN2_72B = ModelConfig(
     include_bias=False,
     embedding_size=152064,
     d_model=8192,
-    mlp_hidden_size=29568*2,
+    mlp_hidden_size=29568 * 2,
     n_layers=80,
     n_heads=64,
     n_kv_heads=8,
@@ -408,6 +511,7 @@ VISION_BACKBONES: Dict[str, VisionBackboneConfig] = {
     "siglip": SIGLIP_VISION_BACKBONE,
     "dinov2_large_336": DINOV2_LARGE_336_VISION_BACKBONE,
     "metaclip_l14_336": METACLIP_L14_336_VISION_BACKBONE,
+    "openclip": OPENCLIP_VISION_BACKBONE,
 }
 
 
@@ -416,6 +520,7 @@ LLMS: Dict[str, ModelConfig] = {
     "olmo_1024_preview": OLMO_1024_PREVIEW,
     "qwen2_7b": QWEN2_7B,
     "qwen2_72b": QWEN2_72B,
+    "olmo2_13b_1124": OLMO2_13B,  # allenai/OLMo-2-1124-13B-Instruct
 }
 
 
@@ -428,10 +533,14 @@ def select_checkpoint(checkpoint):
             if match:
                 candidates.append((file, int(match.group(1))))
         if len(candidates) == 0:
-            raise FileNotFoundError(f"{checkpoint_dir} is a directory but it did not "
-                                    f"contain any unsharded checkpoints")
+            raise FileNotFoundError(
+                f"{checkpoint_dir} is a directory but it did not "
+                f"contain any unsharded checkpoints"
+            )
         checkpoint_dir = max(candidates, key=lambda x: x[1])[0].absolute().as_posix()
-        logging.info(f"Selected {checkpoint_dir} as oldest checkpoint in {checkpoint_dir}")
+        logging.info(
+            f"Selected {checkpoint_dir} as oldest checkpoint in {checkpoint_dir}"
+        )
         return checkpoint_dir
     else:
         return checkpoint

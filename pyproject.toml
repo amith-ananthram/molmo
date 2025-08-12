@@ -35,7 +35,8 @@ dependencies = [
     "einops-exts",
     "tqdm",
     "gcsfs==2023.9.2",
-    "accelerate"
+    "accelerate",
+    "peft>=0.7.0"
 ]
 
 [project.optional-dependencies]

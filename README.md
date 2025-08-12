@@ -308,6 +308,36 @@ We recommend ensuring the data is downloaded and then using the environment vari
 `HF_DATASETS_OFFLINE=1` to ensure the nodes don't flood HF with requests as they all initialize 
 and then potentially get rate limited.
 
+## LoRA Fine-tuning
+
+Molmo now supports LoRA (Low-Rank Adaptation) for efficient fine-tuning:
+
+```bash
+# Install LoRA dependencies
+pip install peft>=0.7.0
+
+# Run LoRA fine-tuning
+torchrun --nproc_per_node=8 scripts/train.py configs/lora_example.yaml
+```
+
+### Key LoRA Features:
+- **Memory efficient**: Uses only 1-10% of original parameters
+- **Fast training**: 2-5x faster than full fine-tuning  
+- **Flexible targeting**: Apply to attention, MLP, or vision components
+- **Easy integration**: Just set `use_lora: true` in config
+
+### Example Configuration:
+```yaml
+use_lora: true
+lora_r: 16                    # Rank parameter
+lora_alpha: 32                # Scaling parameter  
+lora_dropout: 0.1             # Dropout rate
+ft_llm: false                 # Freeze base LLM weights
+ft_connector: true            # Fine-tune vision-language connector
+```
+
+See `LORA_USAGE.md` for detailed documentation and `configs/lora_example.yaml` for a complete example.
+
 ## Citation
 
 ```bibtex

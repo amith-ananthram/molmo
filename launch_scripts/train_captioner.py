@@ -10,10 +10,25 @@ from launch_scripts.utils import DEBUG_MODEL, VISION_BACKBONES, LLMS, DEFAULT_LO
 from olmo.torch_util import get_world_size
 from scripts.train import main as train
 
-from olmo import TrainConfig, WandbConfig, DataConfig, OptimizerConfig, OptimizerType, \
-    SchedulerConfig, SchedulerType, FSDPConfig, FSDPPrecision, FSDPWrapStrategy
-from olmo.config import BatchDivisor, SpeedMonitorConfig, ActivationCheckpointingStrategy, \
-    DatasetEvaluatorConfig
+from olmo import (
+    TrainConfig,
+    WandbConfig,
+    DataConfig,
+    OptimizerConfig,
+    OptimizerType,
+    SchedulerConfig,
+    SchedulerType,
+    FSDPConfig,
+    FSDPPrecision,
+    FSDPWrapStrategy,
+)
+from olmo.config import (
+    BatchDivisor,
+    SpeedMonitorConfig,
+    ActivationCheckpointingStrategy,
+    DatasetEvaluatorConfig,
+    AttentionType,
+)
 from olmo.util import (
     add_cached_path_clients,
     clean_opt,
@@ -44,9 +59,28 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(prog="Train a captioner")
     parser.add_argument("llm", choices=["debug"] + list(LLMS.keys()))
-    parser.add_argument("--vision_backbone", choices=list(VISION_BACKBONES.keys()), default="openai")
+    parser.add_argument(
+        "--vision_backbone", choices=list(VISION_BACKBONES.keys()), default="openai"
+    )
+    parser.add_argument("--ft-llm", action="store_true", default=False)
+    parser.add_argument("--ft-vit", action="store_true", default=False)
+    parser.add_argument(
+        "--ft-embedding", type=str, choices=["ln_f", "lm_head", "wte", "all"]
+    )
+    parser.add_argument("--use-lora", action="store_true")
+    parser.add_argument("--lora-r", default=16, type=int)
+    parser.add_argument("--lora-alpha", default=32, type=int)
+    parser.add_argument("--lora-dropout", default=0.0, type=float)
+    parser.add_argument("--lora-target-modules", default=None, type=str)
+    parser.add_argument("--lora-modules-to-save", default=None, type=str)
+    parser.add_argument(
+        "--lora-bias", default="none", choices=["none", "all", "lora_only"]
+    )
+    parser.add_argument("--llm-learning-rate", default=2e-5, type=float)
+    parser.add_argument("--llm-t-warmup", default=2000, type=int)
     parser.add_argument("--global_batch_size", default=128, type=int)
     parser.add_argument("--n_eval_examples", default=2048, type=int)
+    parser.add_argument("--device_train_microbatch_size", default=4, type=int)
     parser.add_argument("--device_eval_batch_size", default=4, type=int)
     parser.add_argument("--seq_len", default=2304, type=int)
     parser.add_argument("--dataset", default="pixmo_cap_with_transcripts")
@@ -59,7 +93,7 @@ if __name__ == "__main__":
         if args.llm == "debug-12crop":
             model_cfg.max_crops = 12
             model_cfg.crop_mode = "overlap-and-resize-c2"
-        model_cfg.system_prompt_kind = 'style_and_length'
+        model_cfg.system_prompt_kind = "style_and_length"
 
         global_batch_size = 8
         model_init = None
@@ -79,9 +113,11 @@ if __name__ == "__main__":
             LLMS[args.llm],
             vision_backbone=VISION_BACKBONES[args.vision_backbone],
             llm_load_path=DEFAULT_LOAD_PATHS.get(args.llm, omegaconf.MISSING),
-            vit_load_path=DEFAULT_LOAD_PATHS.get(args.vision_backbone, omegaconf.MISSING),
+            vit_load_path=DEFAULT_LOAD_PATHS.get(
+                args.vision_backbone, omegaconf.MISSING
+            ),
             crop_mode="overlap-and-resize-c2",
-            system_prompt_kind='style_and_length',
+            system_prompt_kind="style_and_length",
             residual_dropout=0.0,
             response_residual_dropout=0.1,
             max_crops=12,
@@ -92,7 +128,8 @@ if __name__ == "__main__":
 
     evaluator = DatasetEvaluatorConfig(
         label="val",
-        subset_num_batches=eval_examples//(args.device_eval_batch_size*get_world_size()),
+        subset_num_batches=eval_examples
+        // (args.device_eval_batch_size * get_world_size()),
         data=DataConfig(
             dataset=args.dataset,
             for_inference=False,
@@ -113,12 +150,14 @@ if __name__ == "__main__":
         save_folder="debug_run" if debug else omegaconf.MISSING,
         seed=6198,
         dry_run=False,
-        wandb=None if debug else WandbConfig(
+        wandb=None
+        if debug
+        else WandbConfig(
             name="${run_name}",
             project="${oc.env:WANDB_PROJECT}",
             group=None,
             entity="${oc.env:WANDB_ENTITY}",
-            log_interval=log_interval
+            log_interval=log_interval,
         ),
         model=model_cfg,
         data=DataConfig(
@@ -135,13 +174,25 @@ if __name__ == "__main__":
             shuffle_messages=False,
         ),
         ft_connector=True,
-        ft_llm=True,
-        ft_vit=True,
+        ft_llm=args.ft_llm,
+        ft_vit=args.ft_vit,
+        ft_embedding=args.ft_embedding,
+        use_lora=args.use_lora,
+        lora_r=args.lora_r,
+        lora_alpha=2 * args.lora_r,
+        lora_dropout=args.lora_dropout,
+        lora_target_modules=args.lora_target_modules.split(",")
+        if args.lora_target_modules
+        else None,
+        lora_modules_to_save=args.lora_modules_to_save.split(",")
+        if args.lora_modules_to_save
+        else None,
+        lora_bias=args.lora_bias,
         optimizer=OptimizerConfig(
             name=OptimizerType.adamw,
             connector_learning_rate=2e-4,
             vit_learning_rate=6e-6,
-            llm_learning_rate=2e-5,
+            llm_learning_rate=args.llm_learning_rate,
             connector_weight_decay=0.0,
             vit_weight_decay=0.0,
             llm_weight_decay=0.0,
@@ -151,20 +202,20 @@ if __name__ == "__main__":
             connector_eps=1e-6,
             vit_eps=1e-6,
             llm_eps=1e-6,
-            metrics_log_interval=20
+            metrics_log_interval=20,
         ),
         scheduler=SchedulerConfig(
             name=SchedulerType.multimodal,
             connector_t_warmup=200,
             vit_t_warmup=2000,
-            llm_t_warmup=2000,
+            llm_t_warmup=args.llm_t_warmup,
             alpha_f=0.1,
-            warmup_min_lr=0.0
+            warmup_min_lr=0.0,
         ),
         fsdp=FSDPConfig(
             use_orig_params=True,
             wrapping_strategy=FSDPWrapStrategy.by_block_and_size,
-            precision=FSDPPrecision.float
+            precision=FSDPPrecision.float,
         ),
         load_path=None,
         initial_model_checkpoint=None,
@@ -175,7 +226,7 @@ if __name__ == "__main__":
         save_interval_unsharded="${max_duration}",
         global_train_batch_size=global_batch_size,
         device_eval_batch_size=args.device_eval_batch_size,
-        device_train_microbatch_size=4,
+        device_train_microbatch_size=args.device_train_microbatch_size,
         time_limit=None,
         max_duration=duration,
         stop_at="${max_duration}",
@@ -194,12 +245,9 @@ if __name__ == "__main__":
             replace(
                 evaluator,
                 label="caption_val",
-                data=replace(
-                    evaluator.data,
-                    dataset="pixmo_cap"
-                )
-            )
-        ]
+                data=replace(evaluator.data, dataset="pixmo_cap"),
+            ),
+        ],
     )
 
     conf = OmegaConf.create(cfg)
@@ -208,4 +256,3 @@ if __name__ == "__main__":
         conf = OmegaConf.merge(conf, OmegaConf.from_dotlist(overrides))
     cfg = cast(TrainConfig, OmegaConf.to_object(conf))
     train(cfg)
-
