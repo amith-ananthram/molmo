@@ -229,7 +229,7 @@ if __name__ == "__main__":
         save_overwrite=debug,
         save_dataloader_state=False,
         save_interval=4000,
-        save_num_checkpoints_to_keep=1,
+        save_num_checkpoints_to_keep=-1,
         save_interval_unsharded="${max_duration}",
         global_train_batch_size=global_batch_size,
         device_eval_batch_size=args.device_eval_batch_size,
