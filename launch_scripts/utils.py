@@ -292,6 +292,27 @@ METACLIP_L14_336_VISION_BACKBONE = VisionBackboneConfig(
 )
 
 
+DFN2B_L_VISION_BACKBONE = VisionBackboneConfig(
+    image_model_type="openai",
+    image_default_input_size=(224, 224),
+    image_patch_size=14,
+    image_pos_patch_size=14,
+    image_emb_dim=1024,
+    image_num_heads=16,
+    image_num_key_value_heads=16,
+    image_num_layers=23,
+    image_head_dim=64,
+    image_mlp_dim=4096,
+    image_mlp_activations="quick_gelu",
+    image_dropout_rate=0.0,
+    image_num_pos=257,
+    image_norm_eps=1e-5,
+    attention_dropout=0.0,
+    residual_dropout=0.0,
+    initializer_range=0.02,
+)
+
+
 OLMOE = ModelConfig(
     d_model=2048,
     n_heads=16,
@@ -390,14 +411,68 @@ OLMO_1024_PREVIEW = ModelConfig(
     image_padding_embed="pad_and_partial_pad",
 )
 
-OLMO2_13B = ModelConfig(
+# sanity checked the relevant Olmo2 architecture changes
+#    1) using RMS nrom (see layer_norm_type)
+#    2) norming attention weights and mlp projections after (see norm_after)
+#    3) normalizing keya nd query projections before calculating attention (model.py:812-814)
+#    4) increasing rope theta to 500k (see rope_theta)
+# the only thing missing is z-loss regularization which is disabled by default (softmax_auxiliary_loss=False)
+OLMO2_1124_7B_INSTRUCT = ModelConfig(
+    d_model=4096,
+    n_heads=32,
+    n_kv_heads=None,
+    clip_qkv=None,
+    n_layers=32,
+    mlp_hidden_size=2 * 11008,
+    activation_type="swiglu",
+    block_type="sequential",
+    block_group_size=1,
+    rope=True,
+    rope_full_precision=True,
+    rope_theta=500000,
+    attention_dropout=0.0,
+    attention_layer_norm=True,
+    layer_norm_type="rms",
+    layer_norm_with_affine=True,
+    layer_norm_eps=1.0e-06,
+    attention_layer_norm_with_affine=True,
+    max_sequence_length=4096,
+    include_bias=False,
+    bias_for_layer_norm=False,
+    scale_logits=False,
+    vocab_size=100278,
+    embedding_size=100352,
+    additional_vocab_size=128,
+    weight_tying=False,
+    attention_type=AttentionType.sdpa,
+    init_device="meta",
+    init_fn="normal",
+    init_std=0.02,
+    init_cutoff_factor=3.0,
+    precision="amp_bf16",
+    norm_after=True,
+    tokenizer=TokenizerConfig(
+        identifier="allenai/OLMo-2-1124-7B-Instruct",
+    ),
+    embedding_dropout=0,
+    image_pooling_2d="attention_meanq",
+    image_padding_embed="pad_and_partial_pad",
+)
+
+
+# sanity checked the relevant Olmo2 architecture changes
+#    1) using RMS nrom (see layer_norm_type)
+#    2) norming attention weights and mlp projections after (see norm_after)
+#    3) normalizing keya nd query projections before calculating attention (model.py:812-814)
+#    4) increasing rope theta to 500k (see rope_theta)
+# the only thing missing is z-loss regularization which is disabled by default (softmax_auxiliary_loss=False)
+OLMO2_1124_13B_INSTRUCT = ModelConfig(
     d_model=5120,
     n_heads=40,
     n_kv_heads=None,
     clip_qkv=None,
     n_layers=40,
-    mlp_ratio=4,
-    mlp_hidden_size=22016,
+    mlp_hidden_size=2 * 13824,
     activation_type="swiglu",
     block_type="sequential",
     block_group_size=1,
@@ -499,8 +574,11 @@ DEFAULT_LOAD_PATHS = {
     "siglip": "${oc.env:MOLMO_DATA_DIR}/pretrained_image_encoders/siglip-so400m-14-384.pt",
     "dinov2_large_336": "${oc.env:MOLMO_DATA_DIR}/pretrained_image_encoders/dinov2-large-336.pt",
     "metaclip_l14_336": "${oc.env:MOLMO_DATA_DIR}/pretrained_image_encoders/metaclip-l14-336.pt",
+    "dfn2b_l": "${oc.env:MOLMO_DATA_DIR}/pretrained_image_encoders/dfn2b-l-14.pt",
     "olmoe": "${oc.env:MOLMO_DATA_DIR}/pretrained_llms/olmoe.pt",
     "olmo_1024_preview": "${oc.env:MOLMO_DATA_DIR}/pretrained_llms/olmo-1024-preview.pt",
+    "olmo2_1124_7b_instruct": "${oc.env:MOLMO_DATA_DIR}/pretrained_llms/olmo2-1124-7b-instruct.pt",
+    "olmo2_1124_13b_instruct": "${oc.env:MOLMO_DATA_DIR}/pretrained_llms/olmo2-1124-13b-instruct.pt",
     "qwen2_7b": "${oc.env:MOLMO_DATA_DIR}/pretrained_llms/qwen2-7b.pt",
     "qwen2_72b": "${oc.env:MOLMO_DATA_DIR}/pretrained_llms/qwen2-70b.pt",
 }
@@ -511,6 +589,7 @@ VISION_BACKBONES: Dict[str, VisionBackboneConfig] = {
     "siglip": SIGLIP_VISION_BACKBONE,
     "dinov2_large_336": DINOV2_LARGE_336_VISION_BACKBONE,
     "metaclip_l14_336": METACLIP_L14_336_VISION_BACKBONE,
+    "dfn2b_l": DFN2B_L_VISION_BACKBONE,
     "openclip": OPENCLIP_VISION_BACKBONE,
 }
 
@@ -518,9 +597,10 @@ VISION_BACKBONES: Dict[str, VisionBackboneConfig] = {
 LLMS: Dict[str, ModelConfig] = {
     "olmoe": OLMOE,
     "olmo_1024_preview": OLMO_1024_PREVIEW,
+    "olmo2_1124_7b_instruct": OLMO2_1124_7B_INSTRUCT,
+    "olmo2_1124_13b_instruct": OLMO2_1124_13B_INSTRUCT,
     "qwen2_7b": QWEN2_7B,
     "qwen2_72b": QWEN2_72B,
-    "olmo2_13b_1124": OLMO2_13B,  # allenai/OLMo-2-1124-13B-Instruct
 }
 
 

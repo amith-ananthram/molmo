@@ -20,8 +20,13 @@ DEFAULT_IM_END_TOKEN = f"<im_end>"
 DEFAULT_IM_COL_TOKEN = f"<im_col>"
 IMAGE_PROMPT = "<|image|>"
 
-EXTRA_TOKENS = (DEFAULT_IM_START_TOKEN, DEFAULT_IM_END_TOKEN, DEFAULT_IMAGE_PATCH_TOKEN,
-                DEFAULT_IM_COL_TOKEN, IMAGE_PROMPT)
+EXTRA_TOKENS = (
+    DEFAULT_IM_START_TOKEN,
+    DEFAULT_IM_END_TOKEN,
+    DEFAULT_IMAGE_PATCH_TOKEN,
+    DEFAULT_IM_COL_TOKEN,
+    IMAGE_PROMPT,
+)
 
 
 class HfTokenizerWrapper:
@@ -30,6 +35,7 @@ class HfTokenizerWrapper:
     This exists mostly for legacy reasons since we used to support other kinds of tokenizers
     with different API
     """
+
     def __init__(self, tokenizer, bos_token_id=None, adds_space=False):
         self.adds_space = adds_space
         self.tokenizer = tokenizer
@@ -46,7 +52,9 @@ class HfTokenizerWrapper:
     def decode(self, x: List[int], truncate_at_eos=True):
         x = [int(t) for t in x]
 
-        if self.eos_token_id == self.bos_token_id and (len(x) > 0 and x[0] == self.eos_token_id):
+        if self.eos_token_id == self.bos_token_id and (
+            len(x) > 0 and x[0] == self.eos_token_id
+        ):
             # Assume an EOS at the start is functioning as BOS
             x = x[1:]
 
@@ -67,16 +75,19 @@ class HfTokenizerWrapper:
 
 
 def build_tokenizer(
-    tokenizer_type, has_extra_token=True,
+    tokenizer_type,
+    has_extra_token=True,
     tokenizer_dir="gs://mm-olmo/tokenizer",
     pad_tokenizer_to=None,
-    memory_cache={}
+    memory_cache={},
 ) -> HfTokenizerWrapper:
     cache_key = (tokenizer_type, has_extra_token, pad_tokenizer_to)
     if cache_key in memory_cache:
         return memory_cache[cache_key]
 
-    cache_dir = None if tokenizer_dir is None or is_url(tokenizer_dir) else tokenizer_dir
+    cache_dir = (
+        None if tokenizer_dir is None or is_url(tokenizer_dir) else tokenizer_dir
+    )
 
     # Stop multiple processes on one node trying to download and cache the tokenizer
     # files, which seems to rarely cause an error
@@ -90,7 +101,9 @@ def build_tokenizer(
 
     extra_tokens = list(EXTRA_TOKENS)
     if pad_tokenizer_to is not None:
-        tokenizer = AutoTokenizer.from_pretrained(tokenizer_type, token=environ.get("HF_ACCESS_TOKEN"), cache_dir=cache_dir)
+        tokenizer = AutoTokenizer.from_pretrained(
+            tokenizer_type, token=environ.get("HF_ACCESS_TOKEN"), cache_dir=cache_dir
+        )
         assert len(tokenizer) <= pad_tokenizer_to
         n_extra_tokens = pad_tokenizer_to - len(tokenizer)
         # This handles a case where the LLM embedding matrix is larger than the vocab size
@@ -99,19 +112,25 @@ def build_tokenizer(
         # the special token embedding matrix, so we pad the vocab with additional special tokens
         if n_extra_tokens > 0:
             logging.info(f"Padding tokenizer with {n_extra_tokens} tokens")
-            extra_tokens = [f"|<EXTRA_TOKENS_{i}>|" for i in range(n_extra_tokens)] + extra_tokens
+            extra_tokens = [
+                f"|<EXTRA_TOKENS_{i}>|" for i in range(n_extra_tokens)
+            ] + extra_tokens
 
     bos_token_id = None
 
     tokenizer = AutoTokenizer.from_pretrained(
-        tokenizer_type, additional_special_tokens=extra_tokens,
+        tokenizer_type,
+        additional_special_tokens=extra_tokens,
         token=environ.get("HF_ACCESS_TOKEN"),
         cache_dir=cache_dir,
     )
     if ("qwen2" in tokenizer_type.lower()) or ("olmo" in tokenizer_type.lower()):
         # These tokenizers do not have a BOS, and instead use EOS as a generic seperator token.
         # In this case we will use EOS as BOS
-        assert tokenizer.bos_token_id is None
+        assert (
+            tokenizer.bos_token_id is None
+            or tokenizer.bos_token_id == tokenizer.eos_token_id
+        )
         bos_token_id = tokenizer.eos_token_id
 
     if pad_tokenizer_to is not None:

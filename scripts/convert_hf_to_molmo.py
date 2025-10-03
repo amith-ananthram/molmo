@@ -10,6 +10,9 @@ import einops
 from flax.traverse_util import flatten_dict, unflatten_dict
 from transformers import AutoModel, AutoModelForCausalLM, CLIPModel, SiglipModel
 
+import sys
+
+sys.path.append(".")
 from launch_scripts.utils import VISION_BACKBONES, LLMS, DEFAULT_LOAD_PATHS
 from olmo import VisionBackboneConfig, ModelConfig, Molmo, BlockType
 from olmo.util import prepare_cli_environment
@@ -529,9 +532,11 @@ CONVERT_FNS = {
     "siglip": convert_state_dict_siglip,
     "dinov2_large_336": convert_state_dict_dino,
     "metaclip_l14_336": convert_state_dict_clip,
+    "dfn2b_l": convert_state_dict_clip,
     "olmoe": convert_state_dict_olmoe,
     "olmo_1024_preview": convert_state_dict_olmo_1024_preview,
-    "olmo_2_1124_7b_instruct": convert_state_dict_olmo_1024_preview,
+    "olmo2_1124_7b_instruct": convert_state_dict_olmo_1024_preview,  # manually verified that the state dicts are consistent
+    "olmo2_1124_13b_instruct": convert_state_dict_olmo_1024_preview,  # manually verified that the state dicts are consistent
     "qwen2_7b": convert_state_dict_qwen2,
     "qwen2_72b": convert_state_dict_qwen2,
 }
@@ -542,13 +547,15 @@ VIT_HF_SOURCES = {
     "siglip": "google/siglip-so400m-patch14-384",
     "dinov2_large_336": "facebook/dinov2-large",
     "metaclip_l14_336": "facebook/metaclip-l14-fullcc2.5b",
+    "dfn2b_l": "apple/DFN2B-CLIP-ViT-L-14",
 }
 
 
 LLM_HF_SOURCES = {
     "olmoe": "allenai/OLMoE-1B-7B-0924",
     "olmo_1024_preview": "allenai/OLMo-7B-1024-preview",
-    "olmo_2_1124_7b_instruct": "allenai/OLMo-2-1124-7B-Instruct",
+    "olmo2_1124_7b_instruct": "allenai/OLMo-2-1124-7B-Instruct",
+    "olmo2_1124_13b_instruct": "allenai/OLMo-2-1124-13B-Instruct",
     "qwen2_7b": "Qwen/Qwen2-7B",
     "qwen2_72b": "Qwen/Qwen2-72B",
 }

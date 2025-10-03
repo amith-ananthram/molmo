@@ -65,7 +65,7 @@ if __name__ == "__main__":
     parser.add_argument("--ft-llm", action="store_true", default=False)
     parser.add_argument("--ft-vit", action="store_true", default=False)
     parser.add_argument(
-        "--ft-embedding", type=str, choices=["ln_f", "lm_head", "wte", "all"]
+        "--ft-embedding", type=str, choices=["ln_f", "lm_head", "wte", "all", "none"]
     )
     parser.add_argument("--use-lora", action="store_true")
     parser.add_argument("--lora-r", default=16, type=int)
@@ -78,6 +78,10 @@ if __name__ == "__main__":
     )
     parser.add_argument("--llm-learning-rate", default=2e-5, type=float)
     parser.add_argument("--llm-t-warmup", default=2000, type=int)
+    parser.add_argument(
+        "--precision", default="amp_bf16", choices=["amp_bf16", "amp_fp16", "fp32"]
+    )
+    parser.add_argument("--fsdp_precision", default="mixed", choices=["float", "mixed"])
     parser.add_argument("--global_batch_size", default=128, type=int)
     parser.add_argument("--n_eval_examples", default=2048, type=int)
     parser.add_argument("--device_train_microbatch_size", default=4, type=int)
@@ -212,10 +216,13 @@ if __name__ == "__main__":
             alpha_f=0.1,
             warmup_min_lr=0.0,
         ),
+        precision=args.precision,
         fsdp=FSDPConfig(
             use_orig_params=True,
             wrapping_strategy=FSDPWrapStrategy.by_block_and_size,
-            precision=FSDPPrecision.float,
+            precision=FSDPPrecision.float
+            if args.fsdp_precision == "float"
+            else FSDPPrecision.mixed,
         ),
         load_path=None,
         initial_model_checkpoint=None,
@@ -232,7 +239,6 @@ if __name__ == "__main__":
         stop_at="${max_duration}",
         max_grad_norm=1,
         batch_divisor=BatchDivisor.global_batch,
-        precision="amp_bf16",
         console_log_interval=log_interval,
         speed_monitor=SpeedMonitorConfig(window_size=20),
         softmax_auxiliary_loss=True,
