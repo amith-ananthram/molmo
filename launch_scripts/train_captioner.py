@@ -112,7 +112,9 @@ if __name__ == "__main__":
         n = len(PixMoCap("train", "captions"))
         duration = 4 * (n + global_batch_size - 1) // global_batch_size
         eval_interval = 1000
-        vit_layers = [-2, -9] if args.vision_backbone == "openai" else [-3, -9]
+        vit_layers = (
+            [-2, -9] if args.vision_backbone in ["openai", "dfn2b_l"] else [-3, -9]
+        )
         model_cfg = replace(
             LLMS[args.llm],
             vision_backbone=VISION_BACKBONES[args.vision_backbone],
