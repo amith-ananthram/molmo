@@ -166,6 +166,7 @@ def main(cfg: TrainConfig) -> None:
 
     # Freeze model components.
     if cfg.model.vision_backbone is not None and not cfg.ft_connector:
+        log.info(f"Freezing connector")
         freeze_parameters_by_name(
             olmo_model, Molmo.get_connector_parameters(), warn=False
         )
@@ -225,7 +226,9 @@ def main(cfg: TrainConfig) -> None:
     # Apply LoRA if enabled
     if cfg.use_lora:
         log.info("Applying LoRA (Low-Rank Adaptation) to model...")
-        olmo_model = wrap_model_with_lora(olmo_model, cfg)
+        olmo_model = wrap_model_with_lora(
+            olmo_model, cfg, keep_trainable_modules=Molmo.get_connector_parameters()
+        )
         if get_global_rank() == 0:
             print_lora_parameters(olmo_model)
 

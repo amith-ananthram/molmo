@@ -62,7 +62,9 @@ def get_default_lora_target_modules() -> List[str]:
 
 
 def create_lora_config(
-    cfg: TrainConfig, target_modules: Optional[List[str]] = None
+    cfg: TrainConfig,
+    target_modules: Optional[List[str]] = None,
+    modules_to_save: Optional[List[str]] = None,
 ) -> "LoraConfig":
     """
     Create a LoRA configuration from training config.
@@ -93,14 +95,17 @@ def create_lora_config(
         target_modules=target_modules,
         lora_dropout=cfg.lora_dropout,
         bias=cfg.lora_bias,
-        modules_to_save=cfg.lora_modules_to_save,
+        modules_to_save=modules_to_save,
         task_type=TaskType.CAUSAL_LM,  # Molmo is a causal language model
         inference_mode=False,  # We're training, not inferencing
     )
 
 
 def wrap_model_with_lora(
-    model: Molmo, cfg: TrainConfig, prepare_for_kbit: bool = False
+    model: Molmo,
+    cfg: TrainConfig,
+    prepare_for_kbit: bool = False,
+    keep_trainable_modules: Optional[List[str]] = None,
 ) -> Union[PeftModel, Molmo]:
     """
     Wrap a Molmo model with LoRA adapters.
@@ -130,7 +135,7 @@ def wrap_model_with_lora(
         model = prepare_model_for_kbit_training(model)
 
     # Create LoRA configuration
-    lora_config = create_lora_config(cfg)
+    lora_config = create_lora_config(cfg, modules_to_save=keep_trainable_modules)
 
     # Apply LoRA to model
     peft_model = get_peft_model(model, lora_config)

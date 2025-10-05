@@ -913,6 +913,8 @@ def get_multimodal_param_groups(
             else:
                 raise ValueError(f"Parameter {fpn} does not belong to any group!")
 
+    assert len(connector_decay) > 0 or len(connector_no_decay) > 0
+
     # Validate that we've considered every parameter
     connector_inter_params = connector_decay & connector_no_decay
     vit_inter_params = vit_decay & vit_no_decay
