@@ -51,7 +51,7 @@ NO_POINT_PREFIX = [
     "Answer this question without pointing: ",
     "Answer without poiints. ",
     "answer without points: ",
-    "answer with text only, do not points\n"
+    "answer with text only, do not points\n",
 ]
 """No-pointing requests templates, used for preprocessing"""
 
@@ -72,21 +72,37 @@ def save_local_dataset(dataset: datasets.Dataset, name: str, n_procs, n_val=None
 
 class PixMoCount(Dataset):
     @classmethod
-    def download(cls, n_procs=1, check_sha=False, n_val=1024, cache_only=False):
+    def download(
+        cls,
+        n_procs=1,
+        check_sha=False,
+        n_val=1024,
+        cache_only=False,
+        retry_failures=False,
+    ):
         local_name = join(PIXMO_DATASETS, "count")
         if exists(local_name):
             return
         all_data = datasets.DatasetDict()
         for split in ["validation", "test", "train"]:
             ds = datasets.load_dataset("allenai/pixmo-count", split=split)
-            url_to_filename = download_pixmo_urls(ds, n_procs, check_sha=check_sha, cache_only=cache_only, verify=False)
+            url_to_filename = download_pixmo_urls(
+                ds,
+                n_procs,
+                check_sha=check_sha,
+                cache_only=cache_only,
+                verify=False,
+                retry_failures=retry_failures,
+            )
             ds = ds.filter(lambda x: x in url_to_filename, input_columns=["image_url"])
             ds = ds.add_column("image", [url_to_filename[x] for x in ds["image_url"]])
             all_data[split] = ds
         save_local_dataset(all_data, local_name, n_procs)
 
     def __init__(self, split, sample=None, counting=False, keep_in_memory=False):
-        self.dataset = datasets.load_from_disk(join(PIXMO_DATASETS, "count"), keep_in_memory=keep_in_memory)[split]
+        self.dataset = datasets.load_from_disk(
+            join(PIXMO_DATASETS, "count"), keep_in_memory=keep_in_memory
+        )[split]
         self.counting = counting
         self.split = split
 
@@ -102,7 +118,7 @@ class PixMoCount(Dataset):
             metadata=dict(
                 image_url=example["image_url"],
                 count=example["count"],
-            )
+            ),
         )
         if self.split == "train":
             points = example["points"]
@@ -115,21 +131,29 @@ class PixMoDocs(Dataset):
         "pixmo_docs_other": "scifi_document",
         "pixmo_docs_charts": "scifi_charts",
         "pixmo_docs_diagrams": "scifi_diagram",
-        "pixmo_docs_tables": "scifi_table"
+        "pixmo_docs_tables": "scifi_table",
     }
 
     @classmethod
-    def download(cls, n_procs=1):
+    def download(cls, n_procs=1, retry_failures=False):
         for name in ["other", "charts", "diagrams", "tables"]:
-            datasets.load_dataset_builder("allenai/pixmo-docs", name=name).download_and_prepare()
+            datasets.load_dataset_builder(
+                "allenai/pixmo-docs", name=name
+            ).download_and_prepare()
 
-    def __init__(self, doc_type, split, sample=None, keep_in_memory=False, v1_style=False):
+    def __init__(
+        self, doc_type, split, sample=None, keep_in_memory=False, v1_style=False
+    ):
         assert doc_type in ["other", "charts", "diagrams", "tables"]
         assert split in ["train", "validation", "test"]
         self.doc_type = doc_type
         self.v1_style = v1_style
         self.dataset = datasets.load_dataset(
-            "allenai/pixmo-docs", name=doc_type, split=split, keep_in_memory=keep_in_memory)
+            "allenai/pixmo-docs",
+            name=doc_type,
+            split=split,
+            keep_in_memory=keep_in_memory,
+        )
 
     def __len__(self):
         return len(self.dataset)
@@ -143,25 +167,39 @@ class PixMoDocs(Dataset):
         return dict(
             image=example["image"],
             message_list=[
-                dict(question=q, answer=a, style=style) for q, a in
-                zip(qas["question"], qas["answer"])
+                dict(question=q, answer=a, style=style)
+                for q, a in zip(qas["question"], qas["answer"])
             ],
-            metadata=dict(
-                image_id=example["image_id"]
-            )
+            metadata=dict(image_id=example["image_id"]),
         )
 
 
 class PixMoPoints(Dataset):
-
     @classmethod
-    def download(cls, n_procs=1, check_sha=True, n_val=2048, cache_only=False, hold_out_pointing_eval=True):
+    def download(
+        cls,
+        n_procs=1,
+        check_sha=True,
+        n_val=2048,
+        cache_only=False,
+        hold_out_pointing_eval=True,
+        retry_failures=False,
+    ):
         collection_method = ["pointing", "counting"]
-        local_names = [join(PIXMO_DATASETS, f"points-{name}") for name in collection_method]
+        local_names = [
+            join(PIXMO_DATASETS, f"points-{name}") for name in collection_method
+        ]
         if all(exists(x) for x in local_names):
             return
         ds = datasets.load_dataset("allenai/pixmo-points", split="train")
-        filenames = download_pixmo_urls(ds, n_procs, check_sha=check_sha, cache_only=cache_only, verify=VERIFY)
+        filenames = download_pixmo_urls(
+            ds,
+            n_procs,
+            check_sha=check_sha,
+            cache_only=cache_only,
+            verify=VERIFY,
+            retry_failures=retry_failures,
+        )
         if hold_out_pointing_eval:
             eval_ds = datasets.load_dataset("allenai/pixmo-points-eval", split="test")
             for url in eval_ds["image_url"]:
@@ -169,10 +207,16 @@ class PixMoPoints(Dataset):
                     del filenames[url]
         for method, local_name in zip(collection_method, local_names):
             logging.info(f"Building subset {method}")
-            ds_for_method = ds.filter(lambda x: x == method, input_columns="collection_method")
-            filtered_dataset = filter_and_group_data(ds_for_method, filenames, check_sha)
+            ds_for_method = ds.filter(
+                lambda x: x == method, input_columns="collection_method"
+            )
+            filtered_dataset = filter_and_group_data(
+                ds_for_method, filenames, check_sha
+            )
             name = "high_frequency" if method == "counting" else "basic"
-            save_local_dataset(filtered_dataset, local_name, n_procs=n_procs, n_val=n_val)
+            save_local_dataset(
+                filtered_dataset, local_name, n_procs=n_procs, n_val=n_val
+            )
 
     def __init__(self, split, kind="both", counting=False, keep_in_memory=False):
         if kind not in ["high_frequency", "basic", "both"]:
@@ -185,16 +229,20 @@ class PixMoPoints(Dataset):
         self.mode = mode
         if kind == "both":
             data1 = datasets.load_from_disk(
-                join(PIXMO_DATASETS, "points-counting"), keep_in_memory=keep_in_memory)[split]
+                join(PIXMO_DATASETS, "points-counting"), keep_in_memory=keep_in_memory
+            )[split]
             data2 = datasets.load_from_disk(
-                join(PIXMO_DATASETS, "points-pointing"), keep_in_memory=keep_in_memory)[split]
+                join(PIXMO_DATASETS, "points-pointing"), keep_in_memory=keep_in_memory
+            )[split]
             self.data = datasets.concatenate_datasets([data1, data2])
         elif kind == "basic":
             self.data = datasets.load_from_disk(
-                join(PIXMO_DATASETS, f"points-pointing"), keep_in_memory=keep_in_memory)[split]
+                join(PIXMO_DATASETS, f"points-pointing"), keep_in_memory=keep_in_memory
+            )[split]
         else:
             self.data = datasets.load_from_disk(
-                join(PIXMO_DATASETS, f"points-counting"), keep_in_memory=keep_in_memory)[split]
+                join(PIXMO_DATASETS, f"points-counting"), keep_in_memory=keep_in_memory
+            )[split]
 
     def __len__(self):
         return len(self.data)
@@ -203,31 +251,48 @@ class PixMoPoints(Dataset):
         ex = self.data[item]
         messages = []
         for label, points in zip(ex["label"], ex["points"]):
-            messages.append(dict(
-                label=label,
-                points=np.stack([[x["x"] for x in points], [x["y"] for x in points]], -1),
-                point_scale=100,
-                style=self.mode
-            ))
+            messages.append(
+                dict(
+                    label=label,
+                    points=np.stack(
+                        [[x["x"] for x in points], [x["y"] for x in points]], -1
+                    ),
+                    point_scale=100,
+                    style=self.mode,
+                )
+            )
         return dict(
             image=ex["image"],
             message_list=messages,
             metadata=dict(
                 image_url=ex["image_url"],
-            )
+            ),
         )
 
 
 class PixMoPointExplanations(Dataset):
-
     @classmethod
-    def download(cls, n_procs=1, check_sha=True, n_val=1024, cache_only=False):
+    def download(
+        cls,
+        n_procs=1,
+        check_sha=True,
+        n_val=1024,
+        cache_only=False,
+        retry_failures=False,
+    ):
         local_name = join(PIXMO_DATASETS, "point-explanations")
         if exists(local_name):
             return
         ds = datasets.load_dataset("allenai/pixmo-point-explanations", split="train")
         ds = ds.filter(lambda x: x is not None, input_columns=["parsed_response"])
-        filenames = download_pixmo_urls(ds, n_procs, check_sha=check_sha, cache_only=cache_only, verify=VERIFY)
+        filenames = download_pixmo_urls(
+            ds,
+            n_procs,
+            check_sha=check_sha,
+            cache_only=cache_only,
+            verify=VERIFY,
+            retry_failures=retry_failures,
+        )
         filtered_dataset = filter_and_group_data(ds, filenames, check_sha)
         save_local_dataset(filtered_dataset, local_name, n_procs, n_val=n_val)
 
@@ -237,29 +302,35 @@ class PixMoPointExplanations(Dataset):
         self.split = split
         self.split_groups = split_groups
         data = datasets.load_from_disk(
-            join(PIXMO_DATASETS, "point-explanations"),
-            keep_in_memory=keep_in_memory)[split]
+            join(PIXMO_DATASETS, "point-explanations"), keep_in_memory=keep_in_memory
+        )[split]
         out = []
         for ex in data:
             molmo_ex = dict(
                 image=ex["image"],
                 metadata=dict(
                     image_url=ex["image_url"],
-                )
+                ),
             )
             msg_list = []
             for q, res, alt, inline, points in zip(
-                ex["question"], ex["parsed_response"],
-                ex["alt_text"], ex["inline_text"], ex["points"]
+                ex["question"],
+                ex["parsed_response"],
+                ex["alt_text"],
+                ex["inline_text"],
+                ex["points"],
             ):
-                msg_list.append(dict(
-                    question=q,
-                    answer=res,
-                    answer_annotations=[dict(
-                        points=p, inline_text=i, alt_text=a
-                    ) for p, i, a in zip(points, inline, alt)],
-                    style="point_qa"
-                ))
+                msg_list.append(
+                    dict(
+                        question=q,
+                        answer=res,
+                        answer_annotations=[
+                            dict(points=p, inline_text=i, alt_text=a)
+                            for p, i, a in zip(points, inline, alt)
+                        ],
+                        style="point_qa",
+                    )
+                )
             if self.split_groups and len(msg_list) > 1:
                 n = len(msg_list) // 2 + len(msg_list) % 2
                 out.append(dict(molmo_ex, message_list=msg_list[:n]))
@@ -277,12 +348,26 @@ class PixMoPointExplanations(Dataset):
 
 class PixMoCapQa(Dataset):
     @classmethod
-    def download(cls, n_procs=1, check_sha=False, n_val=2048, cache_only=False):
+    def download(
+        cls,
+        n_procs=1,
+        check_sha=False,
+        n_val=2048,
+        cache_only=False,
+        retry_failures=False,
+    ):
         local_name = join(PIXMO_DATASETS, "cap-qa")
         if exists(local_name):
             return
         ds = datasets.load_dataset("allenai/pixmo-cap-qa", split="train")
-        filenames = download_pixmo_urls(ds, n_procs, check_sha=check_sha, cache_only=cache_only, verify=VERIFY)
+        filenames = download_pixmo_urls(
+            ds,
+            n_procs,
+            check_sha=check_sha,
+            cache_only=cache_only,
+            verify=VERIFY,
+            retry_failures=retry_failures,
+        )
         filtered_dataset = filter_and_group_data(ds, filenames, check_sha)
         save_local_dataset(filtered_dataset, local_name, n_procs, n_val=n_val)
 
@@ -292,21 +377,24 @@ class PixMoCapQa(Dataset):
         self.split = split
         self.prefix_how_many = prefix_how_many
         self.data = datasets.load_from_disk(
-            join(PIXMO_DATASETS, "cap-qa"), keep_in_memory=keep_in_memory)[split]
+            join(PIXMO_DATASETS, "cap-qa"), keep_in_memory=keep_in_memory
+        )[split]
 
     def __len__(self):
         return len(self.data)
 
     def get(self, item, rng):
         example = self.data[item]
-        messages = [dict(messages=msg, style="synthetic_qa") for msg in example["messages"]]
+        messages = [
+            dict(messages=msg, style="synthetic_qa") for msg in example["messages"]
+        ]
 
         ex = dict(
             image=example["image"],
             message_list=messages,
             metadata=dict(
                 image_url=example["image_url"],
-            )
+            ),
         )
 
         if self.prefix_how_many:
@@ -321,29 +409,53 @@ class PixMoCapQa(Dataset):
 
 class PixMoCap(Dataset):
     @classmethod
-    def download(cls, n_procs=1, check_sha=False, n_val=2048, cache_only=False, sample=None):
+    def download(
+        cls,
+        n_procs=1,
+        check_sha=False,
+        n_val=2048,
+        cache_only=False,
+        sample=None,
+        retry_failures=False,
+    ):
         local_name = join(PIXMO_DATASETS, "cap")
         if exists(local_name):
             return
         ds = datasets.load_dataset("allenai/pixmo-cap", split="train")
         if sample:
             ds = ds.take(sample)
-        url_to_filename = download_pixmo_urls(ds, n_procs, check_sha=check_sha, cache_only=cache_only, verify=VERIFY)
+        url_to_filename = download_pixmo_urls(
+            ds,
+            n_procs,
+            check_sha=check_sha,
+            cache_only=cache_only,
+            verify=VERIFY,
+            retry_failures=retry_failures,
+        )
         logging.info("Preparing data...")
-        filtered_dataset = ds.filter(lambda x: x in url_to_filename, input_columns=["image_url"])
+        filtered_dataset = ds.filter(
+            lambda x: x in url_to_filename, input_columns=["image_url"]
+        )
         filtered_dataset = filtered_dataset.add_column(
-            "image", [url_to_filename[x] for x in filtered_dataset["image_url"]])
+            "image", [url_to_filename[x] for x in filtered_dataset["image_url"]]
+        )
         save_local_dataset(filtered_dataset, local_name, n_procs, n_val=n_val)
 
     def __init__(self, split, mode, prefix_how_many=True, keep_in_memory=False):
         if split not in ["train", "validation"]:
             raise ValueError(f"Unknown split {split}")
-        if mode not in ["transcripts", "captions", "transcript_and_caption", "transcript1_and_caption"]:
+        if mode not in [
+            "transcripts",
+            "captions",
+            "transcript_and_caption",
+            "transcript1_and_caption",
+        ]:
             raise ValueError(mode)
         self.split = split
         self.mode = mode
         self.data = datasets.load_from_disk(
-            join(PIXMO_DATASETS, "cap"), keep_in_memory=keep_in_memory)[split]
+            join(PIXMO_DATASETS, "cap"), keep_in_memory=keep_in_memory
+        )[split]
 
     def __len__(self):
         return len(self.data)
@@ -353,7 +465,11 @@ class PixMoCap(Dataset):
         messages = []
         caption = ex.pop("caption")
         transcripts = ex.pop("transcripts")
-        if self.mode in ["captions", "transcript_and_caption", "transcript1_and_caption"]:
+        if self.mode in [
+            "captions",
+            "transcript_and_caption",
+            "transcript1_and_caption",
+        ]:
             messages.append(dict(text=caption, style="long_caption"))
         if self.mode in ["transcript_and_caption", "transcript1_and_caption"]:
             if self.mode == "transcript_and_caption":
@@ -368,19 +484,33 @@ class PixMoCap(Dataset):
             message_list=messages,
             metadata=dict(
                 image_url=ex.pop("image_url"),
-            )
+            ),
         )
         return out
 
 
 class PixMoAskModelAnything(Dataset):
     @classmethod
-    def download(cls, n_procs=1, check_sha=True, n_val=2048, cache_only=False):
+    def download(
+        cls,
+        n_procs=1,
+        check_sha=True,
+        n_val=2048,
+        cache_only=False,
+        retry_failures=False,
+    ):
         local_name = join(PIXMO_DATASETS, "ask-model-anything")
         if exists(local_name):
             return
         ds = datasets.load_dataset("allenai/pixmo-ask-model-anything", split="train")
-        filenames = download_pixmo_urls(ds, n_procs, check_sha=check_sha, cache_only=cache_only, verify=VERIFY)
+        filenames = download_pixmo_urls(
+            ds,
+            n_procs,
+            check_sha=check_sha,
+            cache_only=cache_only,
+            verify=VERIFY,
+            retry_failures=retry_failures,
+        )
         filtered_dataset = filter_and_group_data(ds, filenames, check_sha)
         save_local_dataset(filtered_dataset, local_name, n_procs, n_val=n_val)
 
@@ -390,7 +520,8 @@ class PixMoAskModelAnything(Dataset):
         self.split = split
         self.prefix_how_many = prefix_how_many
         self.data = datasets.load_from_disk(
-            join(PIXMO_DATASETS, "ask-model-anything"), keep_in_memory=keep_in_memory)[split]
+            join(PIXMO_DATASETS, "ask-model-anything"), keep_in_memory=keep_in_memory
+        )[split]
 
     def __len__(self):
         return len(self.data)
@@ -399,18 +530,14 @@ class PixMoAskModelAnything(Dataset):
         example = self.data[item]
         messages = []
         for q, a in zip(example["question"], example["answer"]):
-            messages.append(dict(
-                question=q,
-                answer=a,
-                style="user_qa"
-            ))
+            messages.append(dict(question=q, answer=a, style="user_qa"))
 
         ex = dict(
             image=example["image"],
             message_list=messages,
             metadata=dict(
                 image_url=example["image_url"],
-            )
+            ),
         )
 
         if self.prefix_how_many:
@@ -423,19 +550,29 @@ class PixMoAskModelAnything(Dataset):
 
 class PixMoPointsEval(Dataset):
     @classmethod
-    def download(cls, n_procs=1, check_sha=True, cache_only=False):
+    def download(
+        cls, n_procs=1, check_sha=True, cache_only=False, retry_failures=False
+    ):
         local_name = join(PIXMO_DATASETS, "pixmo-points-eval")
         if exists(local_name):
             return
         ds = datasets.load_dataset("allenai/pixmo-points-eval", split="test")
-        url_to_filename = download_pixmo_urls(ds, n_procs, check_sha=check_sha, cache_only=cache_only, verify=VERIFY)
+        url_to_filename = download_pixmo_urls(
+            ds,
+            n_procs,
+            check_sha=check_sha,
+            cache_only=cache_only,
+            verify=VERIFY,
+            retry_failures=retry_failures,
+        )
         ds = ds.filter(lambda x: x in url_to_filename, input_columns=["image_url"])
         ds = ds.add_column("image", [url_to_filename[x] for x in ds["image_url"]])
         save_local_dataset(ds, local_name, n_procs)
 
     def __init__(self, keep_in_memory=False):
         self.data = datasets.load_from_disk(
-            join(PIXMO_DATASETS, "pixmo-points-eval"), keep_in_memory=keep_in_memory)
+            join(PIXMO_DATASETS, "pixmo-points-eval"), keep_in_memory=keep_in_memory
+        )
 
     def __len__(self):
         return len(self.data)
@@ -455,6 +592,5 @@ class PixMoPointsEval(Dataset):
                 points=points,
                 masks=np.array(ex["masks"], dtype=bool),
                 image_url=ex["image_url"],
-            )
+            ),
         )
-

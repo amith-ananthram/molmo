@@ -1,5 +1,6 @@
 from .config import *
 from .model import *
+from .lora_utils import *
 
 
 def check_install(cuda: bool = False):

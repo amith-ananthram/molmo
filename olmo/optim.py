@@ -88,9 +88,9 @@ class Optimizer(OptimizerBase):
         # Collect metrics locally.
         for group in self.param_groups:
             # if is_distributed():
-                # TODO (epwalsh): handle non-sharded params. We don't have any right now but we would
-                # with ReLoRa, for example.
-                # assert group.get("sharded", True) is True
+            # TODO (epwalsh): handle non-sharded params. We don't have any right now but we would
+            # with ReLoRa, for example.
+            # assert group.get("sharded", True) is True
 
             group_name = group.get("group_name", None)
             if multi_modal:
@@ -106,7 +106,10 @@ class Optimizer(OptimizerBase):
                     state = self.get_state_for_param(p)
                     sorted_state_keys = sorted([k for k in state.keys()])
                     tensors.extend([p] + [state[key] for key in sorted_state_keys])
-                    prefixes.extend([f"param/{name}"] + [f"{key}/{name}" for key in sorted_state_keys])
+                    prefixes.extend(
+                        [f"param/{name}"]
+                        + [f"{key}/{name}" for key in sorted_state_keys]
+                    )
                 assert len(tensors) == len(prefixes)
 
                 # Get min, max, avg, and norm for all `tensors` associated with the parameter.
@@ -116,24 +119,44 @@ class Optimizer(OptimizerBase):
                     if x is not None and x.numel() > 0:
                         if collect_param_metrics:
                             x_abs = x.abs()
-                            per_param_min_metrics.append(x_abs.min().unsqueeze(0).to(dtype=torch.float32))
-                            per_param_max_metrics.append(x_abs.max().unsqueeze(0).to(dtype=torch.float32))
-                            per_param_sum_metrics.append(x.sum().unsqueeze(0).to(dtype=torch.float32))
+                            per_param_min_metrics.append(
+                                x_abs.min().unsqueeze(0).to(dtype=torch.float32)
+                            )
+                            per_param_max_metrics.append(
+                                x_abs.max().unsqueeze(0).to(dtype=torch.float32)
+                            )
+                            per_param_sum_metrics.append(
+                                x.sum().unsqueeze(0).to(dtype=torch.float32)
+                            )
                             per_param_numel_metrics.append(
-                                torch.tensor([x.numel()], device=device, dtype=torch.float32)
+                                torch.tensor(
+                                    [x.numel()], device=device, dtype=torch.float32
+                                )
                             )
                         per_param_norm_metrics.append(
-                            torch.linalg.vector_norm(x, 2.0, dtype=torch.float32).unsqueeze(0)
+                            torch.linalg.vector_norm(
+                                x, 2.0, dtype=torch.float32
+                            ).unsqueeze(0)
                         )
                     else:
                         if collect_param_metrics:
                             per_param_min_metrics.append(
-                                torch.tensor([float("inf")], device=device, dtype=torch.float32)
+                                torch.tensor(
+                                    [float("inf")], device=device, dtype=torch.float32
+                                )
                             )
-                            per_param_max_metrics.append(torch.tensor([0.0], device=device, dtype=torch.float32))
-                            per_param_sum_metrics.append(torch.tensor([0.0], device=device, dtype=torch.float32))
-                            per_param_numel_metrics.append(torch.tensor([0.0], device=device, dtype=torch.float32))
-                        per_param_norm_metrics.append(torch.tensor([0.0], device=device, dtype=torch.float32))
+                            per_param_max_metrics.append(
+                                torch.tensor([0.0], device=device, dtype=torch.float32)
+                            )
+                            per_param_sum_metrics.append(
+                                torch.tensor([0.0], device=device, dtype=torch.float32)
+                            )
+                            per_param_numel_metrics.append(
+                                torch.tensor([0.0], device=device, dtype=torch.float32)
+                            )
+                        per_param_norm_metrics.append(
+                            torch.tensor([0.0], device=device, dtype=torch.float32)
+                        )
                     if collect_param_metrics:
                         per_param_min_metric_names.append(f"{prefix}.min")
                         per_param_max_metric_names.append(f"{prefix}.max")
@@ -176,12 +199,16 @@ class Optimizer(OptimizerBase):
             # Reduce mins.
             if per_param_min_metrics:
                 all_mins = torch.cat(per_param_min_metrics).to(device)
-                dist.reduce(all_mins, dst_rank, op=dist.ReduceOp.MIN, group=process_group)
+                dist.reduce(
+                    all_mins, dst_rank, op=dist.ReduceOp.MIN, group=process_group
+                )
                 per_param_min_metrics = all_mins.split(1)
             # Reduce maxs.
             if per_param_max_metrics:
                 all_maxs = torch.cat(per_param_max_metrics).to(device)
-                dist.reduce(all_maxs, dst_rank, op=dist.ReduceOp.MAX, group=process_group)
+                dist.reduce(
+                    all_maxs, dst_rank, op=dist.ReduceOp.MAX, group=process_group
+                )
                 per_param_max_metrics = all_maxs.split(1)
             # Reduce sums or just norms.
             all_norms = torch.cat(per_param_norm_metrics).to(device) ** 2.0
@@ -189,9 +216,16 @@ class Optimizer(OptimizerBase):
                 all_sums = torch.cat(per_param_sum_metrics).to(device)
                 all_numels = torch.cat(per_param_numel_metrics).to(device)
                 all_sums_norms_numels = torch.cat(
-                    [all_sums.unsqueeze(0), all_norms.unsqueeze(0), all_numels.unsqueeze(0)], dim=0
+                    [
+                        all_sums.unsqueeze(0),
+                        all_norms.unsqueeze(0),
+                        all_numels.unsqueeze(0),
+                    ],
+                    dim=0,
                 )
-                dist.all_reduce(all_sums_norms_numels, op=dist.ReduceOp.SUM, group=process_group)
+                dist.all_reduce(
+                    all_sums_norms_numels, op=dist.ReduceOp.SUM, group=process_group
+                )
                 all_sums, all_norms, all_numels = all_sums_norms_numels.split(1)
                 # Get averages.
                 # NOTE: could get infs for non-rank0 processes but that's okay.
@@ -199,29 +233,41 @@ class Optimizer(OptimizerBase):
             else:
                 dist.all_reduce(all_norms, op=dist.ReduceOp.SUM, group=process_group)
             grad_norm_metric_mask = torch.tensor(
-                [float(is_grad_norm_metric(n)) for n in per_param_norm_metric_names], device=all_norms.device
+                [float(is_grad_norm_metric(n)) for n in per_param_norm_metric_names],
+                device=all_norms.device,
             )
             total_grad_norm = (all_norms * grad_norm_metric_mask).sum() ** 0.5
             if multi_modal:
                 connector_mask = torch.tensor(
-                    [float(is_connector(n)) for n in per_param_group_names], device=all_norms.device
+                    [float(is_connector(n)) for n in per_param_group_names],
+                    device=all_norms.device,
                 )
                 vit_mask = torch.tensor(
-                    [float(is_vit(n)) for n in per_param_group_names], device=all_norms.device
+                    [float(is_vit(n)) for n in per_param_group_names],
+                    device=all_norms.device,
                 )
                 llm_mask = torch.tensor(
-                    [float(is_llm(n)) for n in per_param_group_names], device=all_norms.device
+                    [float(is_llm(n)) for n in per_param_group_names],
+                    device=all_norms.device,
                 )
-                connector_grad_norm = (all_norms * grad_norm_metric_mask * connector_mask).sum() ** 0.5
-                vit_grad_norm = (all_norms * grad_norm_metric_mask * vit_mask).sum() ** 0.5
-                llm_grad_norm = (all_norms * grad_norm_metric_mask * llm_mask).sum() ** 0.5
+                connector_grad_norm = (
+                    all_norms * grad_norm_metric_mask * connector_mask
+                ).sum() ** 0.5
+                vit_grad_norm = (
+                    all_norms * grad_norm_metric_mask * vit_mask
+                ).sum() ** 0.5
+                llm_grad_norm = (
+                    all_norms * grad_norm_metric_mask * llm_mask
+                ).sum() ** 0.5
             per_param_norm_metrics = (all_norms ** (0.5)).squeeze(0).split(1)
         else:
             total_grad_norm = (
                 torch.cat(
                     [
                         m
-                        for m, n in zip(per_param_norm_metrics, per_param_norm_metric_names)
+                        for m, n in zip(
+                            per_param_norm_metrics, per_param_norm_metric_names
+                        )
                         if is_grad_norm_metric(n)
                     ]
                 )
@@ -232,7 +278,11 @@ class Optimizer(OptimizerBase):
                     torch.cat(
                         [
                             m
-                            for m, n, gn in zip(per_param_norm_metrics, per_param_norm_metric_names, per_param_group_names)
+                            for m, n, gn in zip(
+                                per_param_norm_metrics,
+                                per_param_norm_metric_names,
+                                per_param_group_names,
+                            )
                             if is_grad_norm_metric(n) and is_connector(gn)
                         ]
                     )
@@ -242,7 +292,11 @@ class Optimizer(OptimizerBase):
                     torch.cat(
                         [
                             m
-                            for m, n, gn in zip(per_param_norm_metrics, per_param_norm_metric_names, per_param_group_names)
+                            for m, n, gn in zip(
+                                per_param_norm_metrics,
+                                per_param_norm_metric_names,
+                                per_param_group_names,
+                            )
                             if is_grad_norm_metric(n) and is_vit(gn)
                         ]
                     )
@@ -252,25 +306,39 @@ class Optimizer(OptimizerBase):
                     torch.cat(
                         [
                             m
-                            for m, n, gn in zip(per_param_norm_metrics, per_param_norm_metric_names, per_param_group_names)
+                            for m, n, gn in zip(
+                                per_param_norm_metrics,
+                                per_param_norm_metric_names,
+                                per_param_group_names,
+                            )
                             if is_grad_norm_metric(n) and is_llm(gn)
                         ]
                     )
                     ** 2.0
                 ).sum() ** 0.5
-            per_param_avg_metrics = [x / n for x, n in zip(per_param_sum_metrics, per_param_numel_metrics)]
+            per_param_avg_metrics = [
+                x / n for x, n in zip(per_param_sum_metrics, per_param_numel_metrics)
+            ]
 
         assert len(per_param_avg_metrics) == len(per_param_avg_metric_names)
 
         # Collect all metrics into a single dict.
         all_metrics: Dict[str, torch.Tensor] = {}
-        for metric_name, metric in zip(per_param_min_metric_names, per_param_min_metrics):
+        for metric_name, metric in zip(
+            per_param_min_metric_names, per_param_min_metrics
+        ):
             all_metrics[metric_name] = metric.squeeze(0)
-        for metric_name, metric in zip(per_param_max_metric_names, per_param_max_metrics):
+        for metric_name, metric in zip(
+            per_param_max_metric_names, per_param_max_metrics
+        ):
             all_metrics[metric_name] = metric.squeeze(0)
-        for metric_name, metric in zip(per_param_avg_metric_names, per_param_avg_metrics):
+        for metric_name, metric in zip(
+            per_param_avg_metric_names, per_param_avg_metrics
+        ):
             all_metrics[metric_name] = metric.squeeze(0)
-        for metric_name, metric in zip(per_param_norm_metric_names, per_param_norm_metrics):
+        for metric_name, metric in zip(
+            per_param_norm_metric_names, per_param_norm_metrics
+        ):
             all_metrics[metric_name] = metric.squeeze(0)
         all_metrics["total_grad_norm"] = total_grad_norm
         if multi_modal:
@@ -285,12 +353,19 @@ class Optimizer(OptimizerBase):
             if (max_norm_ratio := group.get("max_grad_norm_ratio")) is not None:
                 assert not multi_modal
                 num_clipped = self._do_adaptive_clipping(
-                    group, max_norm_ratio, global_step, all_metrics, collect_param_metrics=collect_param_metrics
+                    group,
+                    max_norm_ratio,
+                    global_step,
+                    all_metrics,
+                    collect_param_metrics=collect_param_metrics,
                 )
             elif (max_norm := group.get("max_grad_norm")) is not None:
                 num_clipped = self._do_global_fixed_clipping(
-                    group, max_norm, all_metrics, collect_param_metrics=collect_param_metrics,
-                    multi_modal=multi_modal
+                    group,
+                    max_norm,
+                    all_metrics,
+                    collect_param_metrics=collect_param_metrics,
+                    multi_modal=multi_modal,
                 )
             else:
                 # No clipping needed.
@@ -301,7 +376,9 @@ class Optimizer(OptimizerBase):
 
         if collect_param_metrics:
             if num_eligible_grads > 0:
-                clipping_rate = torch.tensor(num_grads_clipped / num_eligible_grads, device="cpu")
+                clipping_rate = torch.tensor(
+                    num_grads_clipped / num_eligible_grads, device="cpu"
+                )
             else:
                 clipping_rate = torch.tensor(0.0, device="cpu")
             all_metrics["clipping_rate"] = clipping_rate
@@ -365,7 +442,9 @@ class Optimizer(OptimizerBase):
                 p.grad.detach().mul_(clip_coef_clamped.to(p.grad.device, p.grad.dtype))
 
             # Update the exponential average of the norm of the gradient with the clipped norm of the gradient.
-            grad_norm_exp_avg.lerp_((grad_norm * clip_coef_clamped).to(grad_norm_exp_avg.device), 1 - beta)
+            grad_norm_exp_avg.lerp_(
+                (grad_norm * clip_coef_clamped).to(grad_norm_exp_avg.device), 1 - beta
+            )
             # Alternative: update with the *unclipped* norm of the gradient.
             #  grad_norm_exp_avg.lerp_(grad_norm.to(grad_norm_exp_avg.device), 1 - beta)
 
@@ -426,7 +505,9 @@ class Optimizer(OptimizerBase):
         del module, process_group
         return {}
 
-    def get_state_for_param(self, param: nn.Parameter) -> Dict[str, Optional[torch.Tensor]]:
+    def get_state_for_param(
+        self, param: nn.Parameter
+    ) -> Dict[str, Optional[torch.Tensor]]:
         del param
         return {}
 
@@ -459,7 +540,11 @@ class LionW(Optimizer):
         update_total_dot_prod = self._update_total_dot_prod
         update_total_norm = self._update_total_norm
         signed_update_total_norm = self._signed_update_total_norm
-        if update_total_dot_prod is None or update_total_norm is None or signed_update_total_norm is None:
+        if (
+            update_total_dot_prod is None
+            or update_total_norm is None
+            or signed_update_total_norm is None
+        ):
             return {}
 
         if is_distributed() and isinstance(module, FullyShardedDataParallel):
@@ -467,19 +552,24 @@ class LionW(Optimizer):
             update_total_norm = update_total_norm**2.0
             signed_update_total_norm = signed_update_total_norm**2.0
             # Reduce all together to avoid multiple communication calls.
-            all_together = torch.stack([update_total_dot_prod, update_total_norm, signed_update_total_norm])
+            all_together = torch.stack(
+                [update_total_dot_prod, update_total_norm, signed_update_total_norm]
+            )
             # Only need the final result on rank0, since that's where we log from.
             dist.reduce(
                 all_together,
                 0 if process_group is None else dist.get_global_rank(process_group, 0),
                 group=process_group,
             )
-            update_total_dot_prod, update_total_norm, signed_update_total_norm = all_together
+            update_total_dot_prod, update_total_norm, signed_update_total_norm = (
+                all_together
+            )
             update_total_norm = update_total_norm**0.5
             signed_update_total_norm = signed_update_total_norm**0.5
 
         update_cos_sim = update_total_dot_prod / torch.max(
-            update_total_norm * signed_update_total_norm, torch.tensor(1e-8, device=get_default_device())
+            update_total_norm * signed_update_total_norm,
+            torch.tensor(1e-8, device=get_default_device()),
         )
         return {"update_cos_sim": update_cos_sim}
 
@@ -523,9 +613,15 @@ class LionW(Optimizer):
                 # Track dot product and norms of update vs signed update in order to calculate
                 # their cosine similarity.
                 update_total_dot_prod = update_total_dot_prod.to(update.device)
-                update_total_dot_prod += torch.tensordot(update, signed_update, dims=len(update.shape))
-                update_norms.append(torch.linalg.vector_norm(update, 2.0, dtype=torch.float32))
-                signed_update_norms.append(torch.linalg.vector_norm(signed_update, 2.0, dtype=torch.float32))
+                update_total_dot_prod += torch.tensordot(
+                    update, signed_update, dims=len(update.shape)
+                )
+                update_norms.append(
+                    torch.linalg.vector_norm(update, 2.0, dtype=torch.float32)
+                )
+                signed_update_norms.append(
+                    torch.linalg.vector_norm(signed_update, 2.0, dtype=torch.float32)
+                )
 
         # Compute cosine similarity between update and signed update.
         self._update_total_dot_prod = update_total_dot_prod.to(get_default_device())
@@ -542,7 +638,9 @@ class LionW(Optimizer):
 
 
 class AdamW(torch.optim.AdamW, Optimizer):
-    def get_state_for_param(self, param: nn.Parameter) -> Dict[str, Optional[torch.Tensor]]:
+    def get_state_for_param(
+        self, param: nn.Parameter
+    ) -> Dict[str, Optional[torch.Tensor]]:
         return {key: self.state[param].get(key) for key in ("exp_avg", "exp_avg_sq")}  # type: ignore
 
 
@@ -555,7 +653,9 @@ class Scheduler(metaclass=ABCMeta):
     warmup_min_lr: Optional[float]
 
     @abstractmethod
-    def get_lr(self, initial_lr: float, step: int, max_steps: int, group_name: str=None) -> float:
+    def get_lr(
+        self, initial_lr: float, step: int, max_steps: int, group_name: str = None
+    ) -> float:
         raise NotImplementedError
 
     def _get_max_grad_norm_coeff(
@@ -581,12 +681,21 @@ class Scheduler(metaclass=ABCMeta):
     def get_max_grad_norm_ratio(
         self, initial_max_grad_norm_ratio: Optional[float], step: int, max_steps: int
     ) -> Optional[float]:
-        return self._get_max_grad_norm_coeff(initial_max_grad_norm_ratio, step, max_steps)
+        return self._get_max_grad_norm_coeff(
+            initial_max_grad_norm_ratio, step, max_steps
+        )
 
-    def _linear_warmup(self, initial_lr: float, step: int, warmup_steps: int = 2000) -> float:
-        warmup_min_lr = self.warmup_min_lr if self.warmup_min_lr is not None else initial_lr * 0.10
+    def _linear_warmup(
+        self, initial_lr: float, step: int, warmup_steps: int = 2000
+    ) -> float:
+        warmup_min_lr = (
+            self.warmup_min_lr if self.warmup_min_lr is not None else initial_lr * 0.10
+        )
         assert 0 <= warmup_min_lr < initial_lr
-        return warmup_min_lr + (initial_lr - warmup_min_lr) * min(step, warmup_steps) / warmup_steps
+        return (
+            warmup_min_lr
+            + (initial_lr - warmup_min_lr) * min(step, warmup_steps) / warmup_steps
+        )
 
 
 @dataclass
@@ -605,7 +714,9 @@ class CosWithWarmup(Scheduler):
         else:
             step = step - self.warmup_steps
             max_steps = max_steps - self.warmup_steps
-            return eta_min + (initial_lr - eta_min) * (1 + cos(pi * step / max_steps)) / 2
+            return (
+                eta_min + (initial_lr - eta_min) * (1 + cos(pi * step / max_steps)) / 2
+            )
 
 
 @dataclass
@@ -614,7 +725,9 @@ class LinearWithWarmup(Scheduler):
     alpha_f: float = 0.1
     t_max: Optional[int] = None
 
-    def get_lr(self, initial_lr: float, step: int, max_steps: int, group_name=None) -> float:
+    def get_lr(
+        self, initial_lr: float, step: int, max_steps: int, group_name=None
+    ) -> float:
         max_steps = max_steps if self.t_max is None else self.t_max
         eta_min = initial_lr * self.alpha_f
         if step < self.warmup_steps:
@@ -645,7 +758,8 @@ class MaxScheduler(Scheduler):
 
     def get_lr(self, initial_lr: float, step: int, max_steps: int) -> float:
         return max(
-            self.sched1.get_lr(initial_lr, step, max_steps), self.sched2.get_lr(initial_lr, step, max_steps)
+            self.sched1.get_lr(initial_lr, step, max_steps),
+            self.sched2.get_lr(initial_lr, step, max_steps),
         )
 
 
@@ -656,7 +770,9 @@ class BoltOnWarmupScheduler(Scheduler):
     warmup_end: int
 
     @classmethod
-    def wrap(cls, scheduler: Scheduler, warmup_start: int, warmup_end: int) -> "BoltOnWarmupScheduler":
+    def wrap(
+        cls, scheduler: Scheduler, warmup_start: int, warmup_end: int
+    ) -> "BoltOnWarmupScheduler":
         return cls(
             grad_clip_warmup_steps=None,
             grad_clip_warmup_factor=None,
@@ -666,12 +782,20 @@ class BoltOnWarmupScheduler(Scheduler):
             warmup_min_lr=None,
         )
 
-    def get_lr(self, initial_lr: float, step: int, max_steps: int, group_name=None) -> float:
+    def get_lr(
+        self, initial_lr: float, step: int, max_steps: int, group_name=None
+    ) -> float:
         if step < self.warmup_start:
             return 0.0
         if step < self.warmup_end:
-            lr_at_intercept = self.inner.get_lr(initial_lr, self.warmup_end, max_steps, group_name)
-            return lr_at_intercept * (step - self.warmup_start) / (self.warmup_end - self.warmup_start)
+            lr_at_intercept = self.inner.get_lr(
+                initial_lr, self.warmup_end, max_steps, group_name
+            )
+            return (
+                lr_at_intercept
+                * (step - self.warmup_start)
+                / (self.warmup_end - self.warmup_start)
+            )
         else:
             return self.inner.get_lr(initial_lr, step, max_steps, group_name)
 
@@ -694,7 +818,9 @@ class MultimodalScheduler(Scheduler):
     vit_scheduler: Scheduler
     llm_scheduelr: Scheduler
 
-    def get_lr(self, initial_lr: float, step: int, max_steps: int, group_name: str) -> float:
+    def get_lr(
+        self, initial_lr: float, step: int, max_steps: int, group_name: str
+    ) -> float:
         if group_name.startswith("connector"):
             return self.connector_scheduler.get_lr(initial_lr, step, max_steps)
         elif group_name.startswith("vit"):
@@ -705,10 +831,18 @@ class MultimodalScheduler(Scheduler):
             raise ValueError(f"Unknown group name: {group_name}")
 
 
-PARAM_GROUP_FIELDS = ("sharded", "max_grad_norm", "max_grad_norm_ratio", "param_names", "group_name")
+PARAM_GROUP_FIELDS = (
+    "sharded",
+    "max_grad_norm",
+    "max_grad_norm_ratio",
+    "param_names",
+    "group_name",
+)
 
 
-def get_multimodal_param_groups(cfg: TrainConfig, model: nn.Module) -> List[Dict[str, Any]]:
+def get_multimodal_param_groups(
+    cfg: TrainConfig, model: nn.Module
+) -> List[Dict[str, Any]]:
     """
     Separate parameters into connector/vit/llm weight decay and non weight decay groups.
     """
@@ -744,12 +878,25 @@ def get_multimodal_param_groups(cfg: TrainConfig, model: nn.Module) -> List[Dict
             fpn = f"{mn}.{pn}" if mn else pn
             all_params[fpn] = p
 
-            is_connector = listinstr(connector_params, fpn, delimiter='.')
-            is_vit = listinstr(vit_params, fpn, delimiter='.')
-            is_llm = listinstr(llm_params, fpn, delimiter='.')
-            no_apply_decay = listinstr(wd_exclusions, fpn, delimiter='.')
+            is_connector = listinstr(connector_params, fpn, delimiter=".")
+            is_vit = listinstr(vit_params, fpn, delimiter=".")
+            is_llm = listinstr(llm_params, fpn, delimiter=".")
+            no_apply_decay = listinstr(wd_exclusions, fpn, delimiter=".")
 
-            assert is_connector or is_vit or is_llm, f"Parameter {fpn} does not belong to any group!"
+            # Check if this is a LoRA parameter
+            is_lora = "lora_" in pn or "lora_A" in pn or "lora_B" in pn
+
+            # For LoRA parameters, we'll categorize them as LLM parameters by default
+            # unless they're clearly vision or connector related
+            if is_lora:
+                if "vision_backbone" in fpn:
+                    is_connector = True
+                else:
+                    is_llm = True
+
+            assert is_connector or is_vit or is_llm, (
+                f"Parameter {fpn} does not belong to any group!"
+            )
 
             if is_connector and not no_apply_decay:
                 connector_decay.add(fpn)
@@ -766,27 +913,55 @@ def get_multimodal_param_groups(cfg: TrainConfig, model: nn.Module) -> List[Dict
             else:
                 raise ValueError(f"Parameter {fpn} does not belong to any group!")
 
+    assert len(connector_decay) > 0 or len(connector_no_decay) > 0
+
     # Validate that we've considered every parameter
     connector_inter_params = connector_decay & connector_no_decay
     vit_inter_params = vit_decay & vit_no_decay
     llm_inter_params = llm_decay & llm_no_decay
-    connector_vit_inter_params = (connector_decay & vit_decay) | (connector_decay & vit_no_decay)
-    connector_vit_inter_params = connector_vit_inter_params | (connector_no_decay & vit_decay) | (
-        connector_no_decay & vit_no_decay
+    connector_vit_inter_params = (connector_decay & vit_decay) | (
+        connector_decay & vit_no_decay
     )
-    connector_llm_inter_params = (connector_decay & llm_decay) | (connector_decay & llm_no_decay)
-    connector_llm_inter_params = connector_llm_inter_params | (connector_no_decay & llm_decay) | (
-        connector_no_decay & llm_no_decay
+    connector_vit_inter_params = (
+        connector_vit_inter_params
+        | (connector_no_decay & vit_decay)
+        | (connector_no_decay & vit_no_decay)
+    )
+    connector_llm_inter_params = (connector_decay & llm_decay) | (
+        connector_decay & llm_no_decay
+    )
+    connector_llm_inter_params = (
+        connector_llm_inter_params
+        | (connector_no_decay & llm_decay)
+        | (connector_no_decay & llm_no_decay)
     )
     vit_llm_inter_params = (vit_decay & llm_decay) | (vit_decay & llm_no_decay)
-    vit_llm_inter_params = vit_llm_inter_params | (vit_no_decay & llm_decay) | (vit_no_decay & llm_no_decay)
+    vit_llm_inter_params = (
+        vit_llm_inter_params
+        | (vit_no_decay & llm_decay)
+        | (vit_no_decay & llm_no_decay)
+    )
     inter_params = connector_inter_params | vit_inter_params | llm_inter_params
-    inter_params = inter_params | connector_vit_inter_params | connector_llm_inter_params | vit_llm_inter_params
-    union_params = connector_decay | connector_no_decay | vit_decay | vit_no_decay | llm_decay | llm_no_decay
-    assert len(inter_params) == 0, f"parameters {inter_params} made it into both decay/no_decay sets!"
-    assert (
-        len(all_params.keys() - union_params) == 0
-    ), f"parameters {all_params.keys() - union_params} were not separated into either decay/no_decay set!"
+    inter_params = (
+        inter_params
+        | connector_vit_inter_params
+        | connector_llm_inter_params
+        | vit_llm_inter_params
+    )
+    union_params = (
+        connector_decay
+        | connector_no_decay
+        | vit_decay
+        | vit_no_decay
+        | llm_decay
+        | llm_no_decay
+    )
+    assert len(inter_params) == 0, (
+        f"parameters {inter_params} made it into both decay/no_decay sets!"
+    )
+    assert len(all_params.keys() - union_params) == 0, (
+        f"parameters {all_params.keys() - union_params} were not separated into either decay/no_decay set!"
+    )
 
     # Create the pytorch optimizer groups.
     connector_decay_sorted = sorted(list(connector_decay))
@@ -915,12 +1090,25 @@ def get_param_groups(cfg: TrainConfig, model: nn.Module) -> List[Dict[str, Any]]
             fpn = f"{mn}.{pn}" if mn else pn
             all_params[fpn] = p
 
-            is_connector = listinstr(connector_params, fpn, delimiter='.')
-            is_vit = listinstr(vit_params, fpn, delimiter='.')
-            is_llm = listinstr(llm_params, fpn, delimiter='.')
-            no_apply_decay = listinstr(wd_exclusions, fpn, delimiter='.')
+            is_connector = listinstr(connector_params, fpn, delimiter=".")
+            is_vit = listinstr(vit_params, fpn, delimiter=".")
+            is_llm = listinstr(llm_params, fpn, delimiter=".")
+            no_apply_decay = listinstr(wd_exclusions, fpn, delimiter=".")
 
-            assert is_connector or is_vit or is_llm, f"Parameter {fpn} does not belong to any group!"
+            # Check if this is a LoRA parameter
+            is_lora = "lora_" in pn or "lora_A" in pn or "lora_B" in pn
+
+            # For LoRA parameters, we'll categorize them as LLM parameters by default
+            # unless they're clearly vision or connector related
+            if is_lora:
+                if "vision_backbone" in fpn:
+                    is_connector = True
+                else:
+                    is_llm = True
+
+            assert is_connector or is_vit or is_llm, (
+                f"Parameter {fpn} does not belong to any group!"
+            )
 
             if no_apply_decay:
                 no_decay.add(fpn)
@@ -950,10 +1138,12 @@ def get_param_groups(cfg: TrainConfig, model: nn.Module) -> List[Dict[str, Any]]
     # Validate that we've considered every parameter
     inter_params = decay & no_decay
     union_params = decay | no_decay
-    assert len(inter_params) == 0, f"parameters {inter_params} made it into both decay/no_decay sets!"
-    assert (
-        len(all_params.keys() - union_params) == 0
-    ), f"parameters {all_params.keys() - union_params} were not separated into either decay/no_decay set!"
+    assert len(inter_params) == 0, (
+        f"parameters {inter_params} made it into both decay/no_decay sets!"
+    )
+    assert len(all_params.keys() - union_params) == 0, (
+        f"parameters {all_params.keys() - union_params} were not separated into either decay/no_decay set!"
+    )
 
     # Create the pytorch optimizer groups.
     decay_sorted = sorted(list(decay))
@@ -987,7 +1177,9 @@ def get_param_groups(cfg: TrainConfig, model: nn.Module) -> List[Dict[str, Any]]
     return param_groups
 
 
-def fix_optim_state_dict(optimizer: Optimizer, state_dict: Dict[str, Any]) -> Dict[str, Any]:
+def fix_optim_state_dict(
+    optimizer: Optimizer, state_dict: Dict[str, Any]
+) -> Dict[str, Any]:
     """
     Make sure old optim state dicts are compatible with new versions.
     """
@@ -995,13 +1187,21 @@ def fix_optim_state_dict(optimizer: Optimizer, state_dict: Dict[str, Any]) -> Di
         assert optimizer.param_groups[1]["weight_decay"] == 0.0
 
         # Decay
-        decay_param_group = {k: v for k, v in state_dict["param_groups"][0].items() if k != "params"}
-        decay_param_group["params"] = optimizer.state_dict()["param_groups"][0]["params"]
+        decay_param_group = {
+            k: v for k, v in state_dict["param_groups"][0].items() if k != "params"
+        }
+        decay_param_group["params"] = optimizer.state_dict()["param_groups"][0][
+            "params"
+        ]
 
         # No decay.
-        no_decay_param_group = {k: v for k, v in state_dict["param_groups"][0].items() if k != "params"}
+        no_decay_param_group = {
+            k: v for k, v in state_dict["param_groups"][0].items() if k != "params"
+        }
         no_decay_param_group["weight_decay"] = 0.0
-        no_decay_param_group["params"] = optimizer.state_dict()["param_groups"][1]["params"]
+        no_decay_param_group["params"] = optimizer.state_dict()["param_groups"][1][
+            "params"
+        ]
 
         state_dict["param_groups"] = [decay_param_group, no_decay_param_group]
 
@@ -1090,7 +1290,9 @@ def build_multimodal_scheduler(cfg: TrainConfig):
     )
 
 
-def build_scheduler(cfg: TrainConfig, sched_cfg: Optional[SchedulerConfig] = None) -> Scheduler:
+def build_scheduler(
+    cfg: TrainConfig, sched_cfg: Optional[SchedulerConfig] = None
+) -> Scheduler:
     sched_cfg = sched_cfg if sched_cfg is not None else cfg.scheduler
     if sched_cfg.name == SchedulerType.cosine_with_warmup:
         return CosWithWarmup(
@@ -1129,8 +1331,12 @@ def build_scheduler(cfg: TrainConfig, sched_cfg: Optional[SchedulerConfig] = Non
             if sched_cfg.grad_clip_warmup_steps is None
             else int(sched_cfg.grad_clip_warmup_steps),
             grad_clip_warmup_factor=sched_cfg.grad_clip_warmup_factor,
-            sched1=build_scheduler(cfg, replace(sched_cfg, name=SchedulerType.cosine_with_warmup)),
-            sched2=build_scheduler(cfg, replace(sched_cfg, name=SchedulerType.inverse_sqrt_with_warmup)),
+            sched1=build_scheduler(
+                cfg, replace(sched_cfg, name=SchedulerType.cosine_with_warmup)
+            ),
+            sched2=build_scheduler(
+                cfg, replace(sched_cfg, name=SchedulerType.inverse_sqrt_with_warmup)
+            ),
             warmup_min_lr=sched_cfg.warmup_min_lr,
         )
     elif sched_cfg.name == SchedulerType.constant:

@@ -1,0 +1,93 @@
+PYTHONPATH=/home/amith/molmo WANDB_API_KEY=27f53e08e3b4153a425a8e9f4478e1b839d963b0 MOLMO_DATA_DIR=/mnt/swordfish-pool2/amith/corpora/molmo CUDA_VISIBLE_DEVICES=0,1,2,3 \
+    torchrun --nproc-per-node=4 launch_scripts/train_captioner.py \
+    olmo_1024_preview --wandb.name=lora_test --wandb.entity=amitha --wandb.project=probing \
+    --save_folder=/mnt/swordfish-pool2/amith/probing/molmo/models/lora_test \
+    --use-lora \
+    --lora-r=64 \
+    --lora-alpha=64 \
+    --lora-dropout=0.05 \
+    --lora-target-modules=att_proj,attn_out,ff_proj,ff_out \
+    --lora-bias=none \
+    --ft-embedding=ln_f \
+    --device_train_microbatch_size=2 \
+    --llm-learning-rate 1e-4 \
+    --llm-t-warmup 1000
+
+LoraConfig(
+task_type=<TaskType.CAUSAL_LM: 'CAUSAL_LM'>, peft_type=<PeftType.LORA: 'LORA'>, 
+auto_mapping=None, base_model_name_or_path=None, revision=None, inference_mode=False, 
+r=64, target_modules={'attn_out', 'att_proj', 'ff_out', 'ff_proj'}, exclude_modules=None, 
+lora_alpha=128, lora_dropout=0.0, fan_in_fan_out=False, bias='True', use_rslora=False, 
+modules_to_save=['att_proj', 'ff_proj', 'attn_out', 'ff_out'], init_lora_weights=True, 
+layers_to_transform=None, layers_pattern=None, rank_pattern={}, alpha_pattern={}, 
+megatron_config=None, megatron_core='megatron.core', trainable_token_indices=None, 
+loftq_config={}, eva_config=None, corda_config=None, use_dora=False, use_qalora=False, 
+qalora_group_size=16, layer_replication=None, 
+runtime_config=LoraRuntimeConfig(ephemeral_gpu_offload=False), lora_bias=False, 
+target_parameters=None 
+)
+
+Molmo(
+  (transformer): ModuleDict(
+    (wte): Embedding()
+    (emb_drop): Dropout(p=0.0, inplace=False)
+    (ln_f): RMSLayerNorm()
+    (blocks): ModuleList(
+      (0-31): 32 x OLMoSequentialBlock(
+        (dropout): Dropout(p=0.0, inplace=False)
+        (k_norm): RMSLayerNorm()
+        (q_norm): RMSLayerNorm()
+        (act): SwiGLU()
+        (attn_out): Linear(in_features=4096, out_features=4096, bias=False)
+        (ff_out): Linear(in_features=11008, out_features=4096, bias=False)
+        (rotary_emb): RotaryEmbedding()
+        (attn_norm): RMSLayerNorm()
+        (ff_norm): RMSLayerNorm()
+        (att_proj): Linear(in_features=4096, out_features=12288, bias=False)
+        (ff_proj): Linear(in_features=4096, out_features=22016, bias=False)
+      )
+    )
+    (ff_out): Linear(in_features=4096, out_features=100352, bias=False)
+  )
+  (vision_backbone): MolmoVisionBackbone(
+    (image_pooling_2d): ViTMultiHeadDotProductAttention(
+      (wq): Linear(in_features=2048, out_features=1024, bias=True)
+      (wk): Linear(in_features=2048, out_features=1024, bias=True)
+      (wv): Linear(in_features=2048, out_features=1024, bias=True)
+      (wo): Linear(in_features=1024, out_features=1024, bias=True)
+      (residual_dropout): Dropout(p=0.0, inplace=False)
+    )
+    (image_projector): ImageProjectorMLP(
+      (w1): Linear(in_features=1024, out_features=11008, bias=False)
+      (w2): Linear(in_features=11008, out_features=4096, bias=False)
+      (w3): Linear(in_features=1024, out_features=11008, bias=False)
+      (act): LlamaSwiGLU()
+      (dropout): Dropout(p=0.0, inplace=False)
+    )
+    (image_feature_dropout): Dropout(p=0.0, inplace=False)
+    (image_vit): VisionTransformer(
+      (patch_embedding): Linear(in_features=588, out_features=1024, bias=False)
+      (pre_ln): LayerNorm((1024,), eps=1e-05, elementwise_affine=True)
+      (transformer): BlockCollection(
+        (resblocks): ModuleList(
+          (0-22): 23 x ResidualAttentionBlock(
+            (attention): ViTMultiHeadDotProductAttention(
+              (wq): Linear(in_features=1024, out_features=1024, bias=True)
+              (wk): Linear(in_features=1024, out_features=1024, bias=True)
+              (wv): Linear(in_features=1024, out_features=1024, bias=True)
+              (wo): Linear(in_features=1024, out_features=1024, bias=True)
+              (residual_dropout): Dropout(p=0.0, inplace=False)
+            )
+            (feed_forward): ViTMLP(
+              (w1): Linear(in_features=1024, out_features=4096, bias=True)
+              (act): QuickGELUActivation()
+              (w2): Linear(in_features=4096, out_features=1024, bias=True)
+            )
+            (attention_norm): LayerNorm((1024,), eps=1e-05, elementwise_affine=True)
+            (ffn_norm): LayerNorm((1024,), eps=1e-05, elementwise_affine=True)
+          )
+        )
+      )
+    )
+  )
+)
